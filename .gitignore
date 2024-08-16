@@ -1,3 +1,9 @@
+# My folders
+multirun/
+outputs/
+conf/multirun/
+conf/outputs/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

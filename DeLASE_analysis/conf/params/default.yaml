@@ -1,0 +1,35 @@
+data_class: leverOddball
+delase_results_dir: /scratch2/weka/millerlab/eisenaj/UniversalUnconsciousness/DeLASE_results
+grid_search_results_dir: /scratch2/weka/millerlab/eisenaj/UniversalUnconsciousness/grid_searches
+all_data_dir: '/scratch2/weka/millerlab/eisenaj/datasets/anesthesia/mat'
+session: null
+area: null
+run_index: 0
+random_state: 42
+
+window: 15
+T_pred: null
+
+# grid search
+grid_set: grid_set4 # grid set name
+num_windows_per_section: 4
+group_ranks: True # group ranks so that the same CPU is used for all ranks
+stat_to_use: aic
+
+# full analysis
+stride: 15
+n_delays: null
+rank: null
+
+# stability
+max_freq: 300
+max_unstable_freq: 125
+
+# preprocessing
+pca: False
+pca_thresh: 0.95
+pca_dims: null
+normed: False
+subsample: 1
+low_pass: null
+high_pass: null
