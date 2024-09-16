@@ -153,8 +153,9 @@ def main(cfg):
 
     normed_folder = 'NOT_NORMED' if not cfg.params.normed else 'NORMED'
     filter_folder = f"[{cfg.params.high_pass},{cfg.params.low_pass}]" if cfg.params.low_pass is not None or cfg.params.high_pass is not None else 'NO_FILTER'
+    sections_to_use_folder = 'SECTIONS_TO_USE_' + '__'.join(['_'.join(section.split(' ')) for section in cfg.params.sections_to_use])
     pca_folder = "NO_PCA" if not cfg.params.pca else f"PCA_{cfg.params.pca_dims}"
-    save_dir = os.path.join(cfg.params.delase_results_dir, cfg.params.data_class, 'delase_results', cfg.params.session, normed_folder, f"SUBSAMPLE_{cfg.params.subsample}", filter_folder, f"WINDOW_{cfg.params.window}", cfg.params.grid_set, f"STAT_TO_USE_{cfg.params.stat_to_use}", f"STRIDE_{cfg.params.stride}", run_params['area'], pca_folder)
+    save_dir = os.path.join(cfg.params.delase_results_dir, cfg.params.data_class, 'delase_results', cfg.params.session, normed_folder, f"SUBSAMPLE_{cfg.params.subsample}", filter_folder, f"WINDOW_{cfg.params.window}", cfg.params.grid_set, f"STAT_TO_USE_{cfg.params.stat_to_use}", sections_to_use_folder, f"STRIDE_{cfg.params.stride}", run_params['area'], pca_folder)
     os.makedirs(save_dir, exist_ok=True)
 
     save_file_path = os.path.join(save_dir, f"run_index-{cfg.params.run_index}.pkl")

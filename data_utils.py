@@ -515,15 +515,20 @@ def get_grid_search_results(cfg, session_list, areas, num_sections, pca_chosen=N
             
             if verbose:
                 print(f"Loading data for {session} - {area}")
+            window_starts = set()
             for f in tqdm(os.listdir(save_dir), disable=not verbose):
                 ret = pd.read_pickle(os.path.join(save_dir, f))
                 run_index = int(f.split('-')[1].split('.')[0])
                 run_info = grid_search_run_list[area][run_index]
+     
                 for key in metric_keys:
                     if cfg.params.group_ranks:
                         grid_search_results[session][area]['mats'][key][run_info['window_num'], run_info['i']] = [ret_[key] for ret_ in ret]
                     else:
                         grid_search_results[session][area]['mats'][key][run_info['window_num'], run_info['i'], run_info['j']] = ret[key]
+
+                window_starts.add(run_info['window_start'])
+                # window_starts.append(run_info['window_start'])
 
             i, j = np.unravel_index(np.nanargmin(grid_search_results[session][area]['mats'][cfg.params.stat_to_use].mean(axis=0)), shape=grid_search_results[session][area]['mats'][cfg.params.stat_to_use].shape[1:])
             n_delays = cfg.grid_sets[cfg.params.grid_set].n_delays_vals[int(i)]
@@ -533,6 +538,7 @@ def get_grid_search_results(cfg, session_list, areas, num_sections, pca_chosen=N
             grid_search_results[session][area]['j'] = j
             grid_search_results[session][area]['n_delays'] = n_delays
             grid_search_results[session][area]['rank'] = rank
+            grid_search_results[session][area]['window_start_ts'] = window_starts
 
     return grid_search_results
 
@@ -655,7 +661,8 @@ def get_dsa_results(cfg, session_list, areas, pca_chosen, verbose=False):
 def get_delase_run_list(cfg, session, verbose=False, min_time=None, max_time=None):
     delase_run_list_dir =  os.path.join(cfg.params.delase_results_dir, cfg.params.data_class, 'delase_run_lists')
     os.makedirs(delase_run_list_dir, exist_ok=True)
-    delase_run_list_file = os.path.join(delase_run_list_dir, f"{session}__stride_{cfg.params.stride}__window_{cfg.params.window}") 
+    sections_to_use_folder = 'SECTIONS_TO_USE_' + '__'.join(['_'.join(section.split(' ')) for section in cfg.params.sections_to_use])
+    delase_run_list_file = os.path.join(delase_run_list_dir, f"{session}__stride_{cfg.params.stride}__window_{cfg.params.window}__{sections_to_use_folder}") 
 
     if os.path.exists(delase_run_list_file):
         delase_run_list = pd.read_pickle(delase_run_list_file)
@@ -663,7 +670,8 @@ def get_delase_run_list(cfg, session, verbose=False, min_time=None, max_time=Non
     # MAKE THE LIST
     else:
 
-        # GET SESSION INFO
+        # GET SECTION AND SESSION INFO
+        section_info, section_info_extended, section_colors = get_section_info(session, cfg.params.all_data_dir, cfg.params.data_class)
 
         os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
         variables = ['electrodeInfo', 'lfpSchema', 'sessionInfo']
@@ -704,17 +712,27 @@ def get_delase_run_list(cfg, session, verbose=False, min_time=None, max_time=Non
                 # unit_indices = np.where(electrode_info['area'] == area)[0]
                 unit_indices = np.where([area in area_entry for area_entry in electrode_info['area']])[0]
             
-            num_windows = int(np.floor((T - ((window + T_pred)/dt))/(stride/dt)) + 1)
-            window_start_times = np.arange(num_windows)*stride
 
+            if 'all_sections' in cfg.params.sections_to_use:
+                num_windows = int(np.floor((T - ((window + T_pred)/dt))/(stride/dt)) + 1)
+                window_start_times = np.arange(num_windows)*stride
 
-            if min_time is None:
-                min_time = -drug_start/60
-            if max_time is None:
-                max_time = T*dt/60 - drug_start/60
-            window_start_times = window_start_times[((window_start_times - drug_start)/60 >= min_time) & ((window_start_times - drug_start)/60 <= max_time)]
+                if min_time is None:
+                    min_time = -drug_start/60
+                if max_time is None:
+                    max_time = T*dt/60 - drug_start/60
+                window_start_times = window_start_times[((window_start_times - drug_start)/60 >= min_time) & ((window_start_times - drug_start)/60 <= max_time)]
 
-            iterator = tqdm(total = int(len(window_start_times)*(len(window_start_times) - 1)/2), desc=f"Creating DSA run list for {area}", disable=not verbose)
+            else:
+                window_start_times = np.array([])
+                for section_key, section_times in section_info:
+                    if section_key in cfg.params.sections_to_use:
+                        section_start = section_times[0]*60 + drug_start
+                        section_end = section_times[1]*60 + drug_start
+                        num_windows = int(np.floor((section_end - section_start - (window + T_pred))/(stride)) + 1)
+                        window_start_times = np.concatenate((window_start_times, np.arange(num_windows)*stride + section_start))
+
+            iterator = tqdm(total = int(len(window_start_times)), desc=f"Creating DeLASE run list for {area}", disable=not verbose)
 
             for i, window_start in enumerate(window_start_times):
                 delase_run_list[area].append(dict(
@@ -751,7 +769,7 @@ def get_delase_results(cfg, session_list, areas, pca_chosen=None, verbose=False)
 
         normed_folder = 'NOT_NORMED' if not cfg.params.normed else 'NORMED'
         filter_folder = f"[{cfg.params.high_pass},{cfg.params.low_pass}]" if cfg.params.low_pass is not None or cfg.params.high_pass is not None else 'NO_FILTER'
-        
+        sections_to_use_folder = 'SECTIONS_TO_USE_' + '__'.join(['_'.join(section.split(' ')) for section in cfg.params.sections_to_use])
         # delase_run_list = get_delase_run_list(cfg, session)
 
         delase_results[session] = {}
@@ -759,7 +777,7 @@ def get_delase_results(cfg, session_list, areas, pca_chosen=None, verbose=False)
             delase_results[session][area] = []
 
             pca_folder = "NO_PCA" if not cfg.params.pca else f"PCA_{pca_chosen[session][area]}"
-            save_dir = os.path.join(cfg.params.delase_results_dir, cfg.params.data_class, 'delase_results', session, normed_folder, f"SUBSAMPLE_{cfg.params.subsample}", filter_folder, f"WINDOW_{cfg.params.window}", cfg.params.grid_set, f"STAT_TO_USE_{cfg.params.stat_to_use}", f"STRIDE_{cfg.params.stride}", area, pca_folder)
+            save_dir = os.path.join(cfg.params.delase_results_dir, cfg.params.data_class, 'delase_results', session, normed_folder, f"SUBSAMPLE_{cfg.params.subsample}", filter_folder, f"WINDOW_{cfg.params.window}", cfg.params.grid_set, f"STAT_TO_USE_{cfg.params.stat_to_use}", sections_to_use_folder, f"STRIDE_{cfg.params.stride}", area, pca_folder)
             
             if verbose:
                 print(f"Loading data for {session} - {area}")
@@ -775,3 +793,41 @@ def get_delase_results(cfg, session_list, areas, pca_chosen=None, verbose=False)
             delase_results[session][area] = pd.DataFrame(delase_results[session][area]).sort_values('window_start').reset_index()
 
     return delase_results
+
+def resection_grid_results(cfg, grid_search_results, sections_to_use=['all_sections']):
+    if 'all_sections' in sections_to_use:
+        return grid_search_results
+
+    for session in grid_search_results.keys():
+        session_vars, T, N, dt = load_session_data(session, cfg.params.all_data_dir, ['sessionInfo'], data_class=cfg.params.data_class, verbose=False)
+        session_info = session_vars['sessionInfo']
+
+        section_info, section_info_extended, section_colors = get_section_info(session, cfg.params.all_data_dir, cfg.params.data_class)
+
+        for area in grid_search_results[session].keys():
+
+            window_start_ts = grid_search_results[session][area]['window_start_ts']
+            window_inds_to_use = []
+            window_starts = []
+            for ind, t in enumerate(window_start_ts):
+                for section_key, section_times in section_info:
+                    # print(section_key)
+                    if section_key in sections_to_use:
+                        if t/60 - session_info['infusionStart']/60 >= section_times[0] and t/60 - session_info['infusionStart']/60 < section_times[1]:
+                            window_inds_to_use.append(ind)
+                            window_starts.append(t)
+            
+            for stat in grid_search_results[session][area]['mats'].keys():
+                grid_search_results[session][area]['mats'][stat] = grid_search_results[session][area]['mats'][stat][window_inds_to_use, :, :]
+
+            i, j = np.unravel_index(np.nanargmin(grid_search_results[session][area]['mats'][cfg.params.stat_to_use].mean(axis=0)), shape=grid_search_results[session][area]['mats'][cfg.params.stat_to_use].shape[1:])
+            n_delays = cfg.grid_sets[cfg.params.grid_set].n_delays_vals[int(i)]
+            rank = cfg.grid_sets[cfg.params.grid_set].rank_vals[int(j)]
+
+            grid_search_results[session][area]['i'] = i
+            grid_search_results[session][area]['j'] = j
+            grid_search_results[session][area]['n_delays'] = n_delays
+            grid_search_results[session][area]['rank'] = rank
+            grid_search_results[session][area]['window_start_ts'] = window_starts
+    
+    return grid_search_results

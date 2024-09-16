@@ -1,4 +1,5 @@
 data_class: leverOddball
+# data_class: propofolPuffTone
 delase_results_dir: /scratch2/weka/millerlab/eisenaj/UniversalUnconsciousness/DeLASE_results
 grid_search_results_dir: /scratch2/weka/millerlab/eisenaj/UniversalUnconsciousness/grid_searches
 all_data_dir: '/scratch2/weka/millerlab/eisenaj/datasets/anesthesia/mat'
@@ -11,10 +12,12 @@ window: 15
 T_pred: null
 
 # grid search
-grid_set: grid_set4 # grid set name
+grid_set: grid_set3 # grid set name
 num_windows_per_section: 4
 group_ranks: True # group ranks so that the same CPU is used for all ranks
 stat_to_use: aic
+# sections_to_use: 'all_sections'
+sections_to_use: ['awake oddball', 'unconscious oddball', 'recovery oddball']
 
 # full analysis
 stride: 15
