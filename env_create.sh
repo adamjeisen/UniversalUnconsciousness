@@ -4,3 +4,4 @@ mamba install -y jupyter jupyterlab matplotlib numpy pandas scikit-learn scipy t
 mamba install -y pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
 pip install hydra-core wandb
 pip install hydra-submitit-launcher --upgrade
+pip install spynal
