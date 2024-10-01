@@ -1,5 +1,3 @@
-from DSA.dmd import DMD
-from DSA.stats import aic, mase, mse, r2
 import hydra
 import logging
 import numpy as np
@@ -11,13 +9,18 @@ import sys
 import time
 import torch
 
+from delase.dmd import DMD
+from delase.metrics import aic, mase, mse, r2_score
+
 sys.path.append('/om2/user/eisenaj/code/UniversalUnconsciousness')
 log = logging.getLogger('Grid Search Logger')
 log.info("Current directory: " + os.getcwd())
-from data_utils import get_grid_search_run_list, load_window_from_chunks
+from data_utils import filter_data, get_data_class, get_grid_search_run_list, load_session_data, load_window_from_chunks
 
 
 def compute_havok_fit(cfg, run_params):
+    os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
+    session_vars, T, N, dt = load_session_data(cfg.params.session, cfg.params.all_data_dir, ['lfpSchema'], data_class=get_data_class(cfg.params.session, cfg.params.all_data_dir))
 
     directory = pd.read_pickle(run_params['directory_path'])
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -26,6 +29,10 @@ def compute_havok_fit(cfg, run_params):
     lfp = lfp[::cfg.params.subsample]
     lfp_test = load_window_from_chunks(run_params['test_window_start'], run_params['test_window_end'], directory, dimension_inds=run_params['dimension_inds'])
     lfp_test = lfp_test[::cfg.params.subsample]
+
+    lfp = filter_data(lfp, cfg.params.low_pass, cfg.params.high_pass, dt*cfg.params.subsample)
+    lfp_test = filter_data(lfp_test, cfg.params.low_pass, cfg.params.high_pass, dt*cfg.params.subsample)
+
     if cfg.params.pca is not None:
         pca = PCA(n_components=cfg.params.pca_dims)
         lfp = pca.fit_transform(lfp)
@@ -47,12 +54,11 @@ def compute_havok_fit(cfg, run_params):
 
         # collect results
         result = dict(
-            mase=mase(lfp_test, lfp_test_pred),
-            r2=r2(lfp_test, lfp_test_pred),
-            aic=aic(lfp_test, lfp_test_pred, rank=run_params['rank']),
-            mse=mse(lfp_test, lfp_test_pred)
+            mase=mase(lfp_test[dmd.n_delays:], lfp_test_pred[dmd.n_delays:].cpu().numpy()),
+            r2=r2_score(lfp_test[dmd.n_delays:], lfp_test_pred[dmd.n_delays:].cpu().numpy()),
+            aic=aic(lfp_test[dmd.n_delays:], lfp_test_pred[dmd.n_delays:].cpu().numpy(), k=dmd.A_v.shape[0]*dmd.A_v.shape[1]),
+            mse=mse(lfp_test[dmd.n_delays:], lfp_test_pred[dmd.n_delays:].cpu().numpy())
         )
-
     else: # list or np.array
         result = []
 
@@ -69,10 +75,10 @@ def compute_havok_fit(cfg, run_params):
 
                 # collect results
                 result.append(dict(
-                    mase=mase(lfp_test, lfp_test_pred),
-                    r2=r2(lfp_test, lfp_test_pred),
-                    aic=aic(lfp_test, lfp_test_pred, rank=rank),
-                    mse=mse(lfp_test, lfp_test_pred)
+                    mase=mase(lfp_test[dmd.n_delays:], lfp_test_pred[dmd.n_delays:].cpu().numpy()),
+                    r2=r2_score(lfp_test[dmd.n_delays:], lfp_test_pred[dmd.n_delays:].cpu().numpy()),
+                    aic=aic(lfp_test[dmd.n_delays:], lfp_test_pred[dmd.n_delays:].cpu().numpy(), k=dmd.A_v.shape[0]*dmd.A_v.shape[1]),
+                    mse=mse(lfp_test[dmd.n_delays:], lfp_test_pred[dmd.n_delays:].cpu().numpy())
                 ))
             else:
                 result.append(dict(

@@ -2,6 +2,7 @@ from copy import deepcopy
 import numpy as np
 import os
 import pandas as pd
+import scipy.signal as signal
 from spynal.matIO import loadmat
 import time
 from tqdm.auto import tqdm
@@ -831,3 +832,88 @@ def resection_grid_results(cfg, grid_search_results, sections_to_use=['all_secti
             grid_search_results[session][area]['window_start_ts'] = window_starts
     
     return grid_search_results
+
+def butter_highpass(cutoff, fs, order=2):
+    nyq = 0.5 * fs
+    normal_cutoff = cutoff / nyq
+    # b, a = signal.butter(order, normal_cutoff, btype='high', analog=False)
+    # return b, a
+    sos = signal.butter(order, normal_cutoff, btype='high', analog=False, output='sos')
+    return sos
+
+def butter_highpass_filter(data, cutoff, fs, order=2):
+    # b, a = butter_highpass(cutoff, fs, order=order)
+    # y = signal.filtfilt(b, a, data)
+    sos = butter_highpass(cutoff, fs, order=order)
+    y = signal.sosfiltfilt(sos, data)
+    return y
+
+def butter_lowpass(cutoff, fs, order=2):
+    nyq = 0.5 * fs
+    normal_cutoff = cutoff / nyq
+    # b, a = signal.butter(order, normal_cutoff, btype='low', analog=False)
+    # return b, a
+    sos = signal.butter(order, normal_cutoff, btype='low', analog=False, output='sos')
+    return sos
+
+def butter_lowpass_filter(data, cutoff, fs, order=2):
+    # b, a = butter_lowpass(cutoff, fs, order=order)
+    # y = signal.filtfilt(b, a, data)
+    sos = butter_lowpass(cutoff, fs, order=order)
+    y = signal.sosfiltfilt(sos, data)
+    return y
+
+# Define the bandstop filter function
+def butter_bandstop_filter(data, lowcut, highcut, fs, order=2):
+    nyquist = 0.5 * fs
+    low = lowcut / nyquist
+    high = highcut / nyquist
+    # b, a = signal.butter(order, [low, high], btype='bandstop')
+    # y = signal.filtfilt(b, a, data)
+    sos = signal.butter(order, [low, high], btype='bandstop', output='sos')
+    y = signal.sosfiltfilt(sos, data)
+    return y
+
+def butter_bandpass(lowcut, highcut, fs, order=2):
+    nyq = 0.5 * fs
+    low = lowcut / nyq
+    high = highcut / nyq
+    # b, a = signal.butter(order, [low, high], btype='band')
+    # return b, a
+    sos = signal.butter(order, [low, high], btype='band', output='sos')
+    return sos
+
+def butter_bandpass_filter(data, lowcut, highcut, fs, order=2):
+    # b, a = butter_bandpass(lowcut, highcut, fs, order=order)
+    # y = signal.lfilter(b, a, data)
+    sos = butter_bandpass(lowcut, highcut, fs, order=order)
+    y = signal.sosfiltfilt(sos, data)
+    return y
+
+def filter_data(data, low_pass=None, high_pass=None, dt=0.001, order=2):
+    if low_pass is None and high_pass is None:
+        return data
+    elif low_pass is None and high_pass is not None:
+        data_filt = np.zeros(data.shape)
+        for i in range(data.shape[1]):
+            data_filt[:, i] = butter_highpass_filter(data[:, i], high_pass, 1/dt, order=order)
+        return data_filt
+    elif low_pass is not None and high_pass is None:
+        data_filt = np.zeros(data.shape)
+        for i in range(data.shape[1]):
+            data_filt[:, i] = butter_lowpass_filter(data[:, i], low_pass, 1/dt, order=order)
+        return data_filt
+    else:
+        if low_pass == high_pass:
+            return data
+        elif low_pass > high_pass:
+            data_filt = np.zeros(data.shape)
+            for i in range(data.shape[1]):
+                data_filt[:, i] = butter_bandpass_filter(data[:, i], high_pass, low_pass, 1/dt, order=order)
+            return data_filt
+        else: # low_pass < high_pass
+            data_filt = np.zeros(data.shape)
+            for i in range(data.shape[1]):
+                data_filt[:, i] = butter_bandstop_filter(data[:, i], low_pass, high_pass, 1/dt, order=order)
+            return data_filt
+            

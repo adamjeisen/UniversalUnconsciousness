@@ -12,7 +12,7 @@ import torch
 sys.path.append('/om2/user/eisenaj/code/UniversalUnconsciousness')
 log = logging.getLogger('DeLASE Logger')
 log.info("Current directory: " + os.getcwd())
-from data_utils import get_data_class, get_delase_run_list, load_session_data, load_window_from_chunks
+from data_utils import filter_data, get_data_class, get_delase_run_list, load_session_data, load_window_from_chunks
 
 from delase import DeLASE 
 from delase.metrics import aic, mase, mse, r2_score
@@ -29,6 +29,9 @@ def compute_delase(cfg, session, run_params):
     print(run_params['test_window_start'], run_params['test_window_end'])
     lfp_test = load_window_from_chunks(run_params['test_window_start'], run_params['test_window_end'], directory, dimension_inds=run_params['dimension_inds'])
     lfp_test = lfp_test[::cfg.params.subsample]
+
+    lfp = filter_data(lfp, cfg.params.low_pass, cfg.params.high_pass, dt*cfg.params.subsample)
+    lfp_test = filter_data(lfp_test, cfg.params.low_pass, cfg.params.high_pass, dt*cfg.params.subsample)
 
     if cfg.params.pca_dims is not None:
         pca = PCA(n_components=cfg.params.pca_dims)
