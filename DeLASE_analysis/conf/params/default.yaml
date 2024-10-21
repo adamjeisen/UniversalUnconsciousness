@@ -1,5 +1,5 @@
-# data_class: leverOddball
-data_class: propofolPuffTone
+data_class: leverOddball
+# data_class: propofolPuffTone
 delase_results_dir: /scratch2/weka/millerlab/eisenaj/UniversalUnconsciousness/DeLASE_results
 grid_search_results_dir: /scratch2/weka/millerlab/eisenaj/UniversalUnconsciousness/grid_searches
 all_data_dir: '/scratch2/weka/millerlab/eisenaj/datasets/anesthesia/mat'
