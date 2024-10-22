@@ -34,7 +34,7 @@ ytick.minor.width: 0.5
 ytick.labelsize: 6
 # Line properties
 lines.linewidth: 0.5
-lines.markersize: 0.005
+lines.markersize: 2
 # Legend properties
 legend.framealpha: 1
 legend.frameon: False
