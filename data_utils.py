@@ -301,10 +301,11 @@ def get_section_info(session, all_data_dir, data_class):
             'induction': '#61C9A8'
         }
     
-    return section_info, section_info_extended, section_colors
+    return section_info, section_info_extended, section_colors, session_info['infusionStart']
 
 
-def get_grid_search_window_ts(session, all_data_dir, data_class, section_info, num_windows_per_section, window_radius=30, random_state=None):
+def get_grid_search_window_ts(session, all_data_dir, data_class, section_info, num_windows_per_section, window_radius=30, valid_window_starts=None, random_state=None):
+    # valid window starts need to be passed as a list of times in seconds relative to session start (not anesthesia start)
     os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
     variables = ['sessionInfo']
     session_vars, T, N, dt = load_session_data(session, all_data_dir, variables, data_class=data_class, verbose=False)
@@ -318,23 +319,35 @@ def get_grid_search_window_ts(session, all_data_dir, data_class, section_info, n
     if random_state is not None:
         np.random.seed(random_state)
     grid_search_window_start_ts = np.zeros(num_windows_per_section*len(section_info))
-    ind = 0
-    for section, times in section_info:
-        for i in range(num_windows_per_section):
-            t = np.random.uniform(times[0], times[1] - window_radius/60)
-            t = t*60 + drug_start
-            if ind > 0:
-                while np.abs(grid_search_window_start_ts[:ind] - t).min() <= window_radius: # if the chosen time is within window_radius seconds of already chosen times
-                    t = np.random.uniform(times[0], times[1] - window_radius/60)
-                    t = t*60 + drug_start
-            grid_search_window_start_ts[ind] = t
-            ind += 1
 
+    if valid_window_starts is None:
+        ind = 0
+        for section, times in section_info:
+            for i in range(num_windows_per_section):
+                t = np.random.uniform(times[0], times[1] - window_radius/60)
+                t = t*60 + drug_start
+                if ind > 0:
+                    while np.abs(grid_search_window_start_ts[:ind] - t).min() <= window_radius: # if the chosen time is within window_radius seconds of already chosen times
+                        t = np.random.uniform(times[0], times[1] - window_radius/60)
+                        t = t*60 + drug_start
+                grid_search_window_start_ts[ind] = t
+                ind += 1
+    else:
+        valid_window_starts = np.array(valid_window_starts)
+        ind = 0
+        for section, times in section_info:
+            section_inds = (((valid_window_starts - drug_start)/60) >= times[0]) & (((valid_window_starts - drug_start)/60) <= times[1])
+            if np.sum(section_inds) < num_windows_per_section:
+                print(f"Only {np.sum(section_inds)} valid windows could be found for section '{section}' with times {times}")
+                grid_search_window_start_ts = grid_search_window_start_ts[:-(num_windows_per_section - np.sum(section_inds))]
+            num_windows_to_choose = np.min([num_windows_per_section, np.sum(section_inds)])
+            grid_search_window_start_ts[ind:ind + num_windows_to_choose] = np.random.choice(valid_window_starts[section_inds], size=num_windows_to_choose, replace=False)
+            ind += num_windows_to_choose
     grid_search_window_start_ts = np.sort(grid_search_window_start_ts)
 
     return grid_search_window_start_ts
 
-def get_grid_search_run_list(session, grid_search_results_dir, all_data_dir, window, grid_set, grid_set_name, grid_search_window_start_ts=None, T_pred=None, group_ranks=True, verbose=False, random_state=None):
+def get_grid_search_run_list(session, grid_search_results_dir, all_data_dir, window, grid_set, grid_set_name, grid_search_window_start_ts=None, T_pred=None, group_ranks=True, bad_electrodes=[], verbose=False, random_state=None):
     grid_search_run_list_dir = os.path.join(grid_search_results_dir, 'grid_search_run_lists')
     os.makedirs(grid_search_run_list_dir, exist_ok=True)
     grid_search_run_list_file = os.path.join(grid_search_run_list_dir, f"{session}_{grid_set_name}_window_{window}")
@@ -374,6 +387,7 @@ def get_grid_search_run_list(session, grid_search_results_dir, all_data_dir, win
             else:
                 # unit_indices = np.where(electrode_info['area'] == area)[0]
                 unit_indices = np.where([area in area_entry for area_entry in electrode_info['area']])[0]
+            unit_indices = np.array([idx for idx in unit_indices if idx not in bad_electrodes])
 
             for window_num, window_start in enumerate(grid_search_window_start_ts):
                 for i, n_delays in enumerate(grid_set['n_delays_vals']):
@@ -416,83 +430,6 @@ def get_grid_search_run_list(session, grid_search_results_dir, all_data_dir, win
     
     return grid_search_run_list
 
-# def get_grid_search_run_list(session, grid_search_results_dir, all_data_dir, window, grid_set, grid_set_name, grid_search_window_start_ts=None, T_pred=None, group_ranks=True, verbose=False, random_state=None):
-#     grid_search_run_list_dir = os.path.join(grid_search_results_dir, 'grid_search_run_lists')
-#     os.makedirs(grid_search_run_list_dir, exist_ok=True)
-#     grid_search_run_list_file = os.path.join(grid_search_run_list_dir, f"{session}_{grid_set_name}")
-#     if os.path.exists(grid_search_run_list_file):
-#         grid_search_run_list = pd.read_pickle(grid_search_run_list_file)
-
-#     # MAKE THE LIST
-#     else:
-#         if grid_search_window_start_ts is None:
-#             raise ValueError(f"File {grid_search_run_list_file} was not found and grid_search_window_start_ts is needed to generate a new list")
-
-#         data_class = get_data_class(session, all_data_dir)
-
-#         os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
-#         variables = ['electrodeInfo', 'lfpSchema', 'sessionInfo']
-#         session_vars, T, N, dt = load_session_data(session, all_data_dir, variables, data_class=data_class, verbose=False)
-#         electrode_info, lfp_schema, session_info = session_vars['electrodeInfo'], session_vars['lfpSchema'], session_vars['sessionInfo']
-#         areas = np.unique(electrode_info['area'])
-#         areas = np.concatenate((areas, ('all',)))
-
-#         directory_path = os.path.join(all_data_dir, data_class, session + '_lfp_chunked_20s', 'directory')
-
-#         grid_search_run_list = {}
-
-#         for area in areas:
-#             grid_search_run_list[area] = []
-            
-#             if T_pred is None:
-#                 T_pred = window
-        
-#             if area == 'all':
-#                 unit_indices = np.arange(len(electrode_info['area']))
-#             else:
-#                 unit_indices = np.where(electrode_info['area'] == area)[0]
-
-#             for window_num, window_start in enumerate(grid_search_window_start_ts):
-#                 for i, n_delays in enumerate(grid_set['n_delays_vals']):
-#                     if group_ranks:
-#                         grid_search_run_list[area].append(dict(
-#                             session=session,
-#                             area=area,
-#                             window_start=window_start,
-#                             window_end=window_start + window,
-#                             test_window_start=window_start + window,
-#                             test_window_end=window_start + window + T_pred,
-#                             n_delays=n_delays,
-#                             rank=list(grid_set['rank_vals']),
-#                             dimension_inds=unit_indices,
-#                             directory_path=directory_path,
-#                             window_num=window_num,
-#                             i=i,
-#                             dt=dt,
-#                         ))
-#                     else:
-#                         for j, rank in enumerate(grid_set['rank_vals']):
-#                             grid_search_run_list[area].append(dict(
-#                                 session=session,
-#                                 area=area,
-#                                 window_start=window_start,
-#                                 window_end=window_start + window,
-#                                 test_window_start=window_start + window,
-#                                 test_window_end=window_start + window + T_pred,
-#                                 n_delays=n_delays,
-#                                 rank=rank,
-#                                 dimension_inds=unit_indices,
-#                                 directory_path=directory_path,
-#                                 window_num=window_num,
-#                                 i=i,
-#                                 j=j,
-#                                 dt=dt,
-#                             ))
-    
-#         pd.to_pickle(grid_search_run_list, grid_search_run_list_file)
-    
-#     return grid_search_run_list
-
 def get_grid_search_results(cfg, session_list, areas, num_sections, pca_chosen=None, metric_keys=['mase', 'r2', 'aic', 'mse'], verbose=False):
     grid_search_results = {}
     for session in session_list:
@@ -500,6 +437,7 @@ def get_grid_search_results(cfg, session_list, areas, num_sections, pca_chosen=N
             print("-"*20)
             print(f"SESSION = {session}")
             print("-"*20)
+        noise_filter_folder = f"NOISE_FILTERED_{cfg.params.window}_{cfg.params.wake_amplitude_thresh}_{cfg.params.anesthesia_amplitude_thresh}_{cfg.params.electrode_num_thresh}" if cfg.params.noise_filter else "NO_NOISE_FILTER"
         normed_folder = 'NOT_NORMED' if not cfg.params.normed else 'NORMED'
         filter_folder = f"[{cfg.params.high_pass},{cfg.params.low_pass}]" if cfg.params.low_pass is not None or cfg.params.high_pass is not None else 'NO_FILTER'
 
@@ -512,7 +450,7 @@ def get_grid_search_results(cfg, session_list, areas, num_sections, pca_chosen=N
             
             grid_search_run_list = get_grid_search_run_list(session, os.path.join(cfg.params.grid_search_results_dir, cfg.params.data_class), cfg.params.all_data_dir, cfg.params.window, cfg.grid_sets[cfg.params.grid_set], cfg.params.grid_set, cfg.params.T_pred, verbose=True, random_state=cfg.params.random_state)
             pca_folder = "NO_PCA" if not cfg.params.pca else f"PCA_{pca_chosen[session][area]}"
-            save_dir = os.path.join(cfg.params.grid_search_results_dir, cfg.params.data_class, 'grid_search_results', session, normed_folder, f"SUBSAMPLE_{cfg.params.subsample}", filter_folder, f"WINDOW_{cfg.params.window}", cfg.params.grid_set, area, pca_folder)
+            save_dir = os.path.join(cfg.params.grid_search_results_dir, cfg.params.data_class, 'grid_search_results', session, noise_filter_folder, normed_folder, f"SUBSAMPLE_{cfg.params.subsample}", filter_folder, f"WINDOW_{cfg.params.window}", cfg.params.grid_set, area, pca_folder)
             
             if verbose:
                 print(f"Loading data for {session} - {area}")
@@ -543,123 +481,7 @@ def get_grid_search_results(cfg, session_list, areas, num_sections, pca_chosen=N
 
     return grid_search_results
 
-def get_dsa_run_list(cfg, session, verbose=False, min_time=-15, max_time=75):
-    dsa_run_list_dir =  os.path.join(cfg.params.dsa_results_dir, cfg.params.data_class, 'dsa_run_lists')
-    os.makedirs(dsa_run_list_dir, exist_ok=True)
-    dsa_run_list_file = os.path.join(dsa_run_list_dir, f"{session}__stride_{cfg.params.stride}__window_{cfg.params.window}") 
-    if os.path.exists(dsa_run_list_file):
-        dsa_run_list = pd.read_pickle(dsa_run_list_file)
-
-    # MAKE THE LIST
-    else:
-
-        # GET SESSION INFO
-
-        os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
-        variables = ['electrodeInfo', 'lfpSchema', 'sessionInfo']
-        session_vars, T, N, dt = load_session_data(session, cfg.params.all_data_dir, variables, data_class=cfg.params.data_class, verbose=False)
-        electrode_info, lfp_schema, session_info = session_vars['electrodeInfo'], session_vars['lfpSchema'], session_vars['sessionInfo']
-        areas = np.unique(electrode_info['area'])
-        areas = np.concatenate((areas, ('all',)))
-        if np.sum(['-L' in area for area in areas]) > 0:
-            areas_bilateral = np.unique([area.split('-')[0] for area in areas if area!='all' and ('-L' in area or '-R' in area)])
-            areas = np.concatenate((areas, areas_bilateral))
-            areas = np.concatenate((areas, ['-L', '-R']))
-
-        directory_path = os.path.join(cfg.params.all_data_dir, cfg.params.data_class, session + '_lfp_chunked_20s', 'directory')
-
-        dsa_run_list = {}
-
-        for area in areas:
-            dsa_run_list[area] = []
-
-            window = cfg.params.window
-            if cfg.params.stride is None:
-                stride = window
-            else:
-                stride = cfg.params.stride
-            if cfg.params.T_pred is None:
-                T_pred = window
-            else:
-                T_pred = cfg.params.T_pred
-        
-            if area == 'all':
-                unit_indices = np.arange(len(electrode_info['area']))
-            else:
-                # unit_indices = np.where(electrode_info['area'] == area)[0]
-                unit_indices = np.where([area in area_entry for area_entry in electrode_info['area']])[0]
-            
-            num_windows = int(np.floor((T - ((window + T_pred)/dt))/(stride/dt)) + 1)
-            window_start_times = np.arange(num_windows)*stride
-            window_start_times = window_start_times[((window_start_times - session_info['drugStart'][0])/60 >= min_time) & ((window_start_times - session_info['drugStart'][0])/60 <= max_time)]
-
-            iterator = tqdm(total = int(len(window_start_times)*(len(window_start_times) - 1)/2), desc=f"Creating DSA run list for {area}", disable=not verbose)
-
-            for i, window1_start in enumerate(window_start_times):
-                for j, window2_start in enumerate(window_start_times):
-                    if j > i:
-                        dsa_run_list[area].append(dict(
-                            session=session,
-                            area=area,
-                            window1_start=window1_start,
-                            window1_end=window1_start + window,
-                            test_window1_start=window1_start + window,
-                            test_window1_end=window1_start + window + T_pred,
-                            window2_start=window2_start,
-                            window2_end=window2_start + window,
-                            test_window2_start=window2_start + window,
-                            test_window2_end=window2_start + window + T_pred,
-                            dimension_inds=unit_indices,
-                            directory_path=directory_path,
-                            stride=stride,
-                            i=i,
-                            j=j,
-                            dt=dt,
-                            n=len(window_start_times)
-                        ))
-
-                        iterator.update()
-            iterator.close()
-
-        pd.to_pickle(dsa_run_list, dsa_run_list_file)
-    
-    return dsa_run_list
-
-def get_dsa_results(cfg, session_list, areas, pca_chosen, verbose=False):
-    dsa_results = {}
-    for session in session_list:
-        if verbose:
-            print("-"*20)
-            print(f"SESSION = {session}")
-            print("-"*20)
-        normed_folder = 'NOT_NORMED' if not cfg.params.normed else 'NORMED'
-        filter_folder = f"[{cfg.params.high_pass},{cfg.params.low_pass}]" if cfg.params.low_pass is not None or cfg.params.high_pass is not None else 'NO_FILTER'
-
-        dsa_run_list = get_dsa_run_list(cfg, session)
-
-        dsa_results[session] = {}
-        for area in areas:
-            dsa_results[session][area] = None
-
-            pca_folder = "NO_PCA" if not cfg.params.pca else f"PCA_{pca_chosen[session][area]}"
-            save_dir = os.path.join(cfg.params.dsa_results_dir, cfg.params.data_class, 'dsa_results', session, normed_folder, f"SUBSAMPLE_{cfg.params.subsample}", filter_folder, f"WINDOW_{cfg.params.window}", cfg.params.grid_set, f"STAT_TO_USE_{cfg.params.stat_to_use}", f"STRIDE_{cfg.params.stride}", area, pca_folder)
-            
-            if verbose:
-                print(f"Loading data for {session} - {area}")
-            for f in tqdm(os.listdir(save_dir), disable=not verbose):
-                ret = pd.read_pickle(os.path.join(save_dir, f))
-                run_index = int(f.split('-')[1].split('.')[0])
-                run_info = dsa_run_list[area][run_index]
-
-                if dsa_results[session][area] is None:
-                    dsa_results[session][area] = np.zeros((run_info['n'], run_info['n']))
-                
-                dsa_results[session][area][run_info['i'], run_info['j']] = ret['score']
-                dsa_results[session][area][run_info['j'], run_info['i']] = ret['score']
-    
-    return dsa_results
-
-def get_delase_run_list(cfg, session, verbose=False, min_time=None, max_time=None):
+def get_delase_run_list(cfg, session, valid_window_starts=None, bad_electrodes=[], verbose=False):
     delase_run_list_dir =  os.path.join(cfg.params.delase_results_dir, cfg.params.data_class, 'delase_run_lists')
     os.makedirs(delase_run_list_dir, exist_ok=True)
     sections_to_use_folder = 'SECTIONS_TO_USE_' + '__'.join(['_'.join(section.split(' ')) for section in cfg.params.sections_to_use])
@@ -712,26 +534,38 @@ def get_delase_run_list(cfg, session, verbose=False, min_time=None, max_time=Non
             else:
                 # unit_indices = np.where(electrode_info['area'] == area)[0]
                 unit_indices = np.where([area in area_entry for area_entry in electrode_info['area']])[0]
-            
+            unit_indices = np.array([idx for idx in unit_indices if idx not in bad_electrodes])
 
             if 'all_sections' in cfg.params.sections_to_use:
-                num_windows = int(np.floor((T - ((window + T_pred)/dt))/(stride/dt)) + 1)
-                window_start_times = np.arange(num_windows)*stride
+                if valid_window_starts is None:
+                    num_windows = int(np.floor((T - ((window + T_pred)/dt))/(stride/dt)) + 1)
+                    window_start_times = np.arange(num_windows)*stride
 
-                if min_time is None:
-                    min_time = -drug_start/60
-                if max_time is None:
-                    max_time = T*dt/60 - drug_start/60
-                window_start_times = window_start_times[((window_start_times - drug_start)/60 >= min_time) & ((window_start_times - drug_start)/60 <= max_time)]
+                    # if min_time is None:
+                    #     min_time = -drug_start/60
+                    # if max_time is None:
+                    #     max_time = T*dt/60 - drug_start/60
+                    # window_start_times = window_start_times[((window_start_times - drug_start)/60 >= min_time) & ((window_start_times - drug_start)/60 <= max_time)]
+                else:
+                    window_start_times = np.array(valid_window_starts)
 
             else:
-                window_start_times = np.array([])
-                for section_key, section_times in section_info:
-                    if section_key in cfg.params.sections_to_use:
-                        section_start = section_times[0]*60 + drug_start
-                        section_end = section_times[1]*60 + drug_start
-                        num_windows = int(np.floor((section_end - section_start - (window + T_pred))/(stride)) + 1)
-                        window_start_times = np.concatenate((window_start_times, np.arange(num_windows)*stride + section_start))
+                if valid_window_starts is None:
+                    window_start_times = np.array([])
+                    for section_key, section_times in section_info:
+                        if section_key in cfg.params.sections_to_use:
+                            section_start = section_times[0]*60 + drug_start
+                            section_end = section_times[1]*60 + drug_start
+                            num_windows = int(np.floor((section_end - section_start - (window + T_pred))/(stride)) + 1)
+                            window_start_times = np.concatenate((window_start_times, np.arange(num_windows)*stride + section_start))
+                else:
+                    valid_window_starts = np.array(valid_window_starts)
+                    for section_key, section_times in section_info:
+                        if section_key in cfg.params.sections_to_use:
+                            section_start = section_times[0]*60 + drug_start
+                            section_end = section_times[1]*60 + drug_start
+                            section_inds = (valid_window_starts >= section_start) & (valid_window_starts <= section_end)
+                            window_start_times = np.concatenate((window_start_times, valid_window_starts[section_inds]))
 
             iterator = tqdm(total = int(len(window_start_times)), desc=f"Creating DeLASE run list for {area}", disable=not verbose)
 
@@ -758,13 +592,14 @@ def get_delase_run_list(cfg, session, verbose=False, min_time=None, max_time=Non
     
     return delase_run_list
 
-def get_delase_results(cfg, session_list, areas, pca_chosen=None, verbose=False):
+def get_delase_results(cfg, session_list, areas, grid_params_to_use, pca_chosen=None, verbose=False):
     delase_results = {}
     for session in session_list:
         if verbose:
             print("-"*20)
             print(f"SESSION = {session}")
             print("-"*20)
+        noise_filter_folder = f"NOISE_FILTERED_{cfg.params.window}_{cfg.params.wake_amplitude_thresh}_{cfg.params.anesthesia_amplitude_thresh}_{cfg.params.electrode_num_thresh}" if cfg.params.noise_filter else "NO_NOISE_FILTER"
         normed_folder = 'NOT_NORMED' if not cfg.params.normed else 'NORMED'
         filter_folder = f"[{cfg.params.high_pass},{cfg.params.low_pass}]" if cfg.params.low_pass is not None or cfg.params.high_pass is not None else 'NO_FILTER'
 
@@ -776,9 +611,9 @@ def get_delase_results(cfg, session_list, areas, pca_chosen=None, verbose=False)
         delase_results[session] = {}
         for area in areas:
             delase_results[session][area] = []
-
+            grid_folder = f"GRID_RESULTS_n_delays_{grid_params_to_use[session][area]['n_delays']}_rank_{grid_params_to_use[session][area]['rank']}"
             pca_folder = "NO_PCA" if not cfg.params.pca else f"PCA_{pca_chosen[session][area]}"
-            save_dir = os.path.join(cfg.params.delase_results_dir, cfg.params.data_class, 'delase_results', session, normed_folder, f"SUBSAMPLE_{cfg.params.subsample}", filter_folder, f"WINDOW_{cfg.params.window}", cfg.params.grid_set, f"STAT_TO_USE_{cfg.params.stat_to_use}", sections_to_use_folder, f"STRIDE_{cfg.params.stride}", area, pca_folder)
+            save_dir = os.path.join(cfg.params.delase_results_dir, cfg.params.data_class, 'delase_results', session, noise_filter_folder, normed_folder, f"SUBSAMPLE_{cfg.params.subsample}", filter_folder, f"WINDOW_{cfg.params.window}", grid_folder, f"STRIDE_{cfg.params.stride}", area, pca_folder)
             
             if verbose:
                 print(f"Loading data for {session} - {area}")
@@ -916,4 +751,123 @@ def filter_data(data, low_pass=None, high_pass=None, dt=0.001, order=2):
             for i in range(data.shape[1]):
                 data_filt[:, i] = butter_bandstop_filter(data[:, i], low_pass, high_pass, 1/dt, order=order)
             return data_filt
+
+def get_loc_roc(cfg, session_info, trial_info):
+    if 'propofol' in cfg.params.data_class:
+        loc = session_info['eyesClose'][-1] if isinstance(session_info['eyesClose'], np.ndarray) else session_info['eyesClose']
+        roc = session_info['eyesOpen'][-1] if isinstance(session_info['eyesOpen'], np.ndarray) else session_info['eyesOpen']
+        ropap = roc
+    elif 'lever' in cfg.params.data_class:
+        lever_window = 60
+        stride = 0.1
+        loc_thresh = 0
+        roc_thresh = 0
+        ropap_thresh = 0.25
+
+        lever_starts = trial_info['trialStart'][trial_info['task'] == 'lever']
+        lever_ends = trial_info['trialEnd'][trial_info['task'] == 'lever']
+
+        window_starts = np.arange(0, lever_ends[-1], stride)
+
+        drug_start = session_info['drugStart'][0] if 'propofol' in cfg.params.data_class else session_info['infusionStart']
+        pct_correct = np.zeros(len(window_starts))
+        loc = int(window_starts[(window_starts >= drug_start) & (pct_correct <= loc_thresh)].min())
+
+        for i, window_start in enumerate(window_starts):
+            window_end = window_start + lever_window
+            outcomes = trial_info['lvr_correct'][(lever_starts >= window_start) & (lever_ends <= window_end)]
+            if len(outcomes) > 0:
+                pct_correct[i] = outcomes.sum()/len(outcomes)
+
+        roc = int(window_starts[(window_starts > loc + 10*60) & (pct_correct > roc_thresh)].min())
+        valid_windows = window_starts[(window_starts > loc + 10*60) & (pct_correct > ropap_thresh)]
+        ropap = int(valid_windows.min() if len(valid_windows) > 0 else window_starts[-1])
+
+        # plt.plot((window_starts - drug_start)/60, pct_correct)
+        # plt.axvline(0, c='plum',label='Drug Start', linestyle='--')
+        # plt.axvline((loc - drug_start)/60, c='r', label='LOC', linestyle='--')
+        # plt.axvline((roc - drug_start)/60, c='g', label='ROC', linestyle='--')
+        # # plt.axvline((ropap - drug_start)/60, c='orange', label='ROPAP', linestyle='--')
+        # plt.xlabel('Time Relative to Anesthesia Start (min)')
+        # plt.ylabel('Response Probability')
+        # plt.legend()
+        # plt.show()
+    
+    return loc, roc, ropap
+
+def find_noisy_data(cfg, session, session_info=None, lfp=None, trial_info=None, return_all=False):
+
+    vars_to_load = []
+    if session_info is None:
+        vars_to_load += ['sessionInfo']
+    if lfp is None:
+        vars_to_load += ['lfp']
+    if trial_info is None:
+        vars_to_load += ['trialInfo']
+
+    os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
+    session_vars, T, N, dt = load_session_data(session, cfg.params.all_data_dir, vars_to_load, data_class=cfg.params.data_class)
+    if session_info is None:
+        session_info = session_vars['sessionInfo']
+    if lfp is None:
+        lfp = session_vars['lfp']
+    if trial_info is None:
+        trial_info = session_vars['trialInfo']
+
+    loc, roc = get_loc_roc(cfg, session_info, trial_info)
+
+    window = cfg.params.window
+    wake_amplitude_thresh = cfg.params.wake_amplitude_thresh
+    anesthesia_amplitude_thresh = cfg.params.anesthesia_amplitude_thresh
+    electrode_num_thresh = cfg.params.electrode_num_thresh
+
+    window_starts = np.arange(0, T*dt - window, window)
+    window_df = []
+
+    for i, window_start in tqdm(enumerate(window_starts), total=len(window_starts)):
+        window_end = window_start + window
+        window_data = lfp[int(window_start/dt):int((window_end)/dt)]
+        max_vals = (np.abs(window_data)).max(axis=0)
+        if window_start <= loc or window_start >= roc:
+            bad_electrodes = np.where(max_vals > wake_amplitude_thresh)[0]
+            wake = True
+        else:
+            bad_electrodes = np.where(max_vals > anesthesia_amplitude_thresh)[0]
+            wake = False 
+        window_df.append(dict(
+            window_start=window_start,
+            window_end=window_end,
+            max_vals=max_vals,
+            bad_electrodes=bad_electrodes,
+            num_bad_electrodes=len(bad_electrodes),
+            noise_window = len(bad_electrodes) > electrode_num_thresh,
+            wake=wake
+        ))
+    window_df = pd.DataFrame(window_df)
+
+    bad_electrodes = np.sort(np.unique(np.hstack(window_df[~window_df.noise_window].bad_electrodes.to_numpy())))
+    # ensure that any window that is immediately followed by a noisy window is not included
+    def find_false_true_pairs(bool_vector):
+        # Use zip to pair each element with its next element
+        return np.concat((np.array([current is False and next is True for i, (current, next) in enumerate(zip(bool_vector[:-1], bool_vector[1:]))]), [True]))
+    noise_precedes = find_false_true_pairs(window_df.noise_window)
+    valid_window_inds = (~noise_precedes) & (~window_df.noise_window)
+    valid_window_starts = window_df[valid_window_inds].window_start.to_numpy()
+
+    if return_all:
+        drug_start = session_info['drugStart'][0] if 'propofol' in cfg.params.data_class else session_info['infusionStart']
+        plot_kwargs = dict(
+            lfp=lfp,
+            dt=dt,
+            drug_start=drug_start,
+            loc=loc,
+            roc=roc,
+            window=window,
+            wake_amplitude_thresh=wake_amplitude_thresh,
+            anesthesia_amplitude_thresh=anesthesia_amplitude_thresh,
+            electrode_num_thresh=electrode_num_thresh,
+            session=session,
+        )
+        return window_df, bad_electrodes, valid_window_starts, plot_kwargs
+    return window_df, bad_electrodes, valid_window_starts
             

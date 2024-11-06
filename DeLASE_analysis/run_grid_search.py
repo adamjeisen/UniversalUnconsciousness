@@ -33,6 +33,8 @@ def compute_havok_fit(cfg, run_params):
     lfp = filter_data(lfp, cfg.params.low_pass, cfg.params.high_pass, dt*cfg.params.subsample)
     lfp_test = filter_data(lfp_test, cfg.params.low_pass, cfg.params.high_pass, dt*cfg.params.subsample)
 
+    log.info(f"LFP shape: {lfp.shape}")
+
     if cfg.params.pca is not None:
         pca = PCA(n_components=cfg.params.pca_dims)
         lfp = pca.fit_transform(lfp)
@@ -46,19 +48,27 @@ def compute_havok_fit(cfg, run_params):
     start = time.time()
 
     if isinstance(run_params['rank'], int):
-        dmd = DMD(lfp, n_delays=run_params['n_delays'], rank=run_params['rank'], device=device, verbose=True)
-        dmd.fit()
-        log.info(f"DMD fit in {time.time() - start} seconds")
+        if rank <= lfp.shape[1]*run_params['n_delays']:
+            dmd = DMD(lfp, n_delays=run_params['n_delays'], rank=run_params['rank'], device=device, verbose=True)
+            dmd.fit()
+            log.info(f"DMD fit in {time.time() - start} seconds")
 
-        lfp_test_pred = dmd.predict(test_data=lfp_test).cpu()
+            lfp_test_pred = dmd.predict(test_data=lfp_test).cpu()
 
-        # collect results
-        result = dict(
-            mase=mase(lfp_test[dmd.n_delays:], lfp_test_pred[dmd.n_delays:].cpu().numpy()),
-            r2=r2_score(lfp_test[dmd.n_delays:], lfp_test_pred[dmd.n_delays:].cpu().numpy()),
-            aic=aic(lfp_test[dmd.n_delays:], lfp_test_pred[dmd.n_delays:].cpu().numpy(), k=dmd.A_v.shape[0]*dmd.A_v.shape[1]),
-            mse=mse(lfp_test[dmd.n_delays:], lfp_test_pred[dmd.n_delays:].cpu().numpy())
-        )
+            # collect results
+            result = dict(
+                mase=mase(lfp_test[dmd.n_delays:], lfp_test_pred[dmd.n_delays:].cpu().numpy()),
+                r2=r2_score(lfp_test[dmd.n_delays:], lfp_test_pred[dmd.n_delays:].cpu().numpy()),
+                aic=aic(lfp_test[dmd.n_delays:], lfp_test_pred[dmd.n_delays:].cpu().numpy(), k=dmd.A_v.shape[0]*dmd.A_v.shape[1]),
+                mse=mse(lfp_test[dmd.n_delays:], lfp_test_pred[dmd.n_delays:].cpu().numpy())
+            )
+        else:
+            result = dict(
+                mase=np.nan,
+                r2=np.nan,
+                aic=np.nan,
+                mse=np.nan
+            )
     else: # list or np.array
         result = []
 
@@ -108,9 +118,10 @@ def main(cfg):
     run_params = grid_search_run_list[cfg.params.area][cfg.params.run_index]
 
     normed_folder = 'NOT_NORMED' if not cfg.params.normed else 'NORMED'
+    noise_filter_folder = f"NOISE_FILTERED_{cfg.params.window}_{cfg.params.wake_amplitude_thresh}_{cfg.params.anesthesia_amplitude_thresh}_{cfg.params.electrode_num_thresh}" if cfg.params.noise_filter else "NO_NOISE_FILTER"
     filter_folder = f"[{cfg.params.high_pass},{cfg.params.low_pass}]" if cfg.params.low_pass is not None or cfg.params.high_pass is not None else 'NO_FILTER'
     pca_folder = "NO_PCA" if not cfg.params.pca else f"PCA_{cfg.params.pca_dims}"
-    save_dir = os.path.join(cfg.params.grid_search_results_dir, cfg.params.data_class, 'grid_search_results', cfg.params.session, normed_folder, f"SUBSAMPLE_{cfg.params.subsample}", filter_folder, f"WINDOW_{cfg.params.window}", cfg.params.grid_set, run_params['area'], pca_folder)
+    save_dir = os.path.join(cfg.params.grid_search_results_dir, cfg.params.data_class, 'grid_search_results', cfg.params.session, noise_filter_folder, normed_folder, f"SUBSAMPLE_{cfg.params.subsample}", filter_folder, f"WINDOW_{cfg.params.window}", cfg.params.grid_set, run_params['area'], pca_folder)
     os.makedirs(save_dir, exist_ok=True)
 
     save_file_path = os.path.join(save_dir, f"run_index-{cfg.params.run_index}.pkl")
