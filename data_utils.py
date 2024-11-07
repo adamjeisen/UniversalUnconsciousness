@@ -625,7 +625,8 @@ def get_delase_results(cfg, session_list, areas, grid_params_to_use, pca_chosen=
                 ret['run_index'] = run_index
 
                 delase_results[session][area].append(ret)
-            
+            if len(delase_results[session][area]) == 0:
+                print(f"No results found for {session} - {area}, grid params: {grid_params_to_use[session][area]}")
             delase_results[session][area] = pd.DataFrame(delase_results[session][area]).sort_values('window_start').reset_index()
 
     return delase_results
