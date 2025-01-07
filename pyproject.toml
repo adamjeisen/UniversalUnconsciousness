@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "UniversalUnconsciousness"
+version = "1.0"
+description = "Code for evaluating dynamic stability during anesthetic-induced unconsciousness via different agents."
+authors = [
+  {name = "Adam J. Eisen", email = "eisenaj@mit.edu" }
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["UniversalUnconsciousness*"]

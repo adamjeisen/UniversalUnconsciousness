@@ -1,0 +1,17 @@
+anesthetic_agent_list:
+  - [propofolPuffTone, propofol]
+  - [anesthesiaLvrOdd, ketamine] 
+  - [anesthesiaLvrOdd, dexmedetomidine]
+
+img_save_dir: "/orcd/data/ekmiller/001/eisenaj/UniversalUnconsciousness/figure_images"
+
+curve_colors:
+  propofol: '#46115E'
+  dexmedetomidine: '#F25F5C'
+  ketamine: '#508991'
+
+loc_roc_colors:
+  propofol: '#E0BEFC'
+  dexmedetomidine: '#F7A2A1'
+  ketamine: '#89B8BE'
+

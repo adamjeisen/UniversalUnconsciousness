@@ -1,0 +1,15 @@
+# @package _global_
+defaults:
+  - override /hydra/launcher: submitit_slurm
+
+hydra:
+  launcher:
+    cpus_per_task: 6
+    nodes: 1
+    # mem_gb: 8
+    mem_per_cpu: 2GB
+    additional_parameters:
+      mail-user: eisenaj@mit.edu
+    timeout_min: 15
+    gres: gpu:1
+    partition: ou_bcs_low

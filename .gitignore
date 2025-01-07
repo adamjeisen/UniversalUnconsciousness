@@ -3,6 +3,7 @@ multirun/
 outputs/
 conf/multirun/
 conf/outputs/
+_slurm/logs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
