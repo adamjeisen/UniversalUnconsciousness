@@ -7,6 +7,7 @@ import scipy
 from tqdm.auto import tqdm
 
 from .data_utils import get_loc_roc, get_section_info
+from .sensory_responses import get_responses_etdc
 
 # Set up figure based on data class
 monkey_titles = {
@@ -120,88 +121,6 @@ def get_session_plot_info(cfg, session_list, verbose=False):
     # everything is relative to the infusion start, so infusion start is 0
     return session_lists, locs, rocs, ropaps
 
-# def plot_session_stability_separate(cfg, session_lists, delase_results, locs, rocs, ropaps, verbose=False):
-#     top_percent = 0.1
-
-#     if 'Lvr' in cfg.params.data_class or 'lever' in cfg.params.data_class:  
-#         # Create a 2x2 grid of subplots
-#         fig, axs = plt.subplots(2, 2, figsize=(15, 8))
-#         fig.suptitle('DeLASE Results by Monkey and Dose', fontsize=14)
-
-#         # Plot for each monkey and dose
-#         for i, monkey in enumerate(['SPOCK', 'PEDRI']):
-#             for j, dose in enumerate(['low', 'high']):
-#                 ax = axs[i, j]
-#                 ax.set_title(f"{monkey} - Dose {dose}", fontsize=12)
-                
-#                 for session in session_lists[monkey][dose]:
-#                     session_file = h5py.File(os.path.join(cfg.params.all_data_dir, cfg.params.data_class, 'mat', f"{session}.mat"))
-#                     infusion_start = session_file['sessionInfo']['infusionStart'][0, 0]
-#                     time_vals = (delase_results[session]['all'].window_start - infusion_start)/60
-#                     stability_vals = delase_results[session]['all'].stability_params.apply(lambda x: x[:int(len(x)*top_percent)].mean())
-#                     ax.plot(time_vals, stability_vals, label=f"Session {session}")
-#                 ax.axvline(0, c='k', ls='--')
-                
-#                 ax.set_xlabel('Time Relative to Infusion (min)', fontsize=10)
-#                 ax.set_ylabel('Mean Stability', fontsize=10)
-#                 ax.tick_params(labelsize=9)
-#                 ax.legend(loc='upper right', fontsize=9)  # Moved legend to upper right for better visibility
-
-
-#         for i, monkey in enumerate(['SPOCK', 'PEDRI']):
-#             for j, dose in enumerate(['low', 'high']):
-#                 ax = axs[i, j]
-#                 ylim = ax.get_ylim()
-#                 roc_vals = (np.array(rocs[monkey][dose]))/60
-#                 ropap_vals = (np.array(ropaps[monkey][dose]))/60
-
-#                 mean_roc = np.mean(roc_vals)
-#                 mean_ropap = np.mean(ropap_vals)
-#                 sem_roc = np.std(roc_vals) / np.sqrt(len(roc_vals))
-#                 sem_ropap = np.std(ropap_vals) / np.sqrt(len(ropap_vals))
-#                 ax.axvline(mean_roc, c='g', ls='-', label=f"ROC mean: {mean_roc:.2f} ± {sem_roc:.2f}")
-#                 ax.axvline(mean_ropap, c='orange', ls='-', label=f"ROPAP mean: {mean_ropap:.2f} ± {sem_ropap:.2f}")
-#                 ax.fill_betweenx(ylim, mean_roc - sem_roc, mean_roc + sem_roc, alpha=0.3, color='g')
-#                 ax.fill_betweenx(ylim, mean_ropap - sem_ropap, mean_ropap + sem_ropap, alpha=0.3, color='orange')
-#     else: # propofol is the data class
-#         fig, axs = plt.subplots(2, 1, figsize=(15, 8))
-#         fig.suptitle('DeLASE Results by Monkey and Dose', fontsize=14)  
-
-#         for i, monkey in enumerate(['Mary', 'MrJones']):
-#             ax = axs[i]
-#             ax.set_title(f"{monkey}", fontsize=12)
-
-#             for session in session_lists[monkey]:
-#                 session_file = h5py.File(os.path.join(cfg.params.all_data_dir, 'anesthesia', 'mat', cfg.params.data_class, f"{session}.mat"))
-#                 infusion_start = session_file['sessionInfo']['drugStart'][0, 0]
-#                 time_vals = (delase_results[session]['all'].window_start - infusion_start)/60
-#                 stability_vals = delase_results[session]['all'].stability_params.apply(lambda x: x[:int(len(x)*top_percent)].mean())
-#                 ax.plot(time_vals, stability_vals, label=f"Session {session}")
-#             ax.axvline(0, c='k', ls='--')
-            
-#             ax.set_xlabel('Time Relative to Infusion (min)', fontsize=10)
-#             ax.set_ylabel('Mean Stability', fontsize=10)
-#             ax.tick_params(labelsize=9)
-#             ax.legend(loc='upper right', fontsize=9)
-        
-#         for i, monkey in enumerate(['Mary', 'MrJones']):
-#             ax = axs[i]
-#             ylim = ax.get_ylim()
-#             #TODO: use infusion start from each individual session
-#             roc_vals = (np.array(rocs[monkey]))/60
-
-#             mean_roc = np.mean(roc_vals)
-#             # mean_ropap = np.mean(ropap_vals)
-#             sem_roc = np.std(roc_vals) / np.sqrt(len(roc_vals))
-#             # sem_ropap = np.std(ropap_vals) / np.sqrt(len(ropap_vals))
-#             ax.axvline(mean_roc, c='g', ls='-', label=f"ROC mean: {mean_roc:.2f} ± {sem_roc:.2f}")
-#             # ax.axvline(mean_ropap, c='orange', ls='-', label=f"ROPAP mean: {mean_ropap:.2f} ± {sem_ropap:.2f}")
-#             ax.fill_betweenx(ylim, mean_roc - sem_roc, mean_roc + sem_roc, alpha=0.3, color='g')
-#             # ax.fill_betweenx(ylim, mean_ropap - sem_ropap, mean_ropap + sem_ropap, alpha=0.3, color='orange')
-
-#     plt.tight_layout()
-#     plt.show()
-
 def _process_stability(x, top_percent):
     """Helper function to process stability parameters into timescales."""
     # Keep only negative roots and convert to timescales
@@ -211,6 +130,8 @@ def _process_stability(x, top_percent):
     # Take only top percentage of timescales
     n_keep = max(1, int(len(timescales) * top_percent))
     top_timescales = np.sort(timescales)[-n_keep:]
+    if len(top_timescales) == 0:
+        print(timescales)
     return np.exp(np.mean(np.log(top_timescales)))  # geometric mean
 
 def _calculate_baseline(stability_params, time_vals, infusion_time, plot_range, top_percent):
@@ -223,9 +144,11 @@ def _calculate_baseline(stability_params, time_vals, infusion_time, plot_range, 
             n_keep = max(1, int(len(timescales) * top_percent))
             top_timescales = np.sort(timescales)[-n_keep:]
             baseline_timescales.extend(top_timescales)
+    if len(baseline_timescales) == 0:
+        return np.nan
     return np.exp(np.mean(np.log(baseline_timescales)))
 
-def _process_session_data(session, delase_results, session_file, infusion_time, common_times, top_percent, plot_range):
+def _process_session_data(session, delase_results, session_file, infusion_time, common_times, top_percent, plot_range, interpolate=True):
     """Helper function to process individual session data."""
     time_vals = delase_results[session]['all'].window_start.values
     
@@ -237,6 +160,9 @@ def _process_session_data(session, delase_results, session_file, infusion_time, 
         plot_range,
         top_percent
     )
+
+    if baseline == np.nan:
+        return np.nan
     
     stability_vals = delase_results[session]['all'].stability_params.apply(
         lambda x: _process_stability(x, top_percent)
@@ -244,7 +170,10 @@ def _process_session_data(session, delase_results, session_file, infusion_time, 
     
     # Align to infusion start and interpolate
     aligned_times = (time_vals - infusion_time) / 60
-    interpolated = np.interp(common_times, aligned_times, stability_vals)
+    if interpolate:
+        interpolated = np.interp(common_times, aligned_times, stability_vals)
+    else:
+        interpolated = stability_vals
     return interpolated
 
 def _plot_statistics(ax, aligned_data, common_times, curve_color):
@@ -287,6 +216,92 @@ def _add_loc_roc_region(ax, locs, rocs, loc_roc_color):
     mean_roc = np.mean(roc_vals)
     
     ax.axvspan(mean_loc, mean_roc, color=loc_roc_color, alpha=0.1)
+
+def plot_roc_vs_max_timescale(cfg, agent, session_lists, delase_results, locs, rocs, ropaps, plot_range=(-15, 85), top_percent=0.1,
+                             curve_colors={'propofol': 'blue', 'dexmedetomidine': 'purple', 'ketamine': 'red'},
+                             figsize=None, dose=None, save_path=None, verbose=False):
+    """Plot ROC time vs maximum timescale ratio for each session.
+    
+    Args:
+        cfg: Config object
+        agent: String indicating anesthetic agent ('propofol', 'dexmedetomidine', or 'ketamine')
+        session_lists: Dict of sessions by monkey and dose
+        delase_results: Dict of DeLASE results by session
+        locs, rocs, ropaps: Lists of LOC, ROC and ROPAP times
+        top_percent: Float indicating percent of eigenvalues to use for stability calculation
+        curve_colors: Dict mapping agents to plot colors
+        figsize: Tuple of figure dimensions
+        dose: String indicating dose to plot ('low' or 'high'), if None plots both
+        save_path: Path to save figure
+        verbose: Bool to print debug info
+    """
+    is_lever = 'ket' in agent.lower() or 'dex' in agent.lower()
+    curve_color = curve_colors[agent]
+
+    if figsize is None:
+        figsize = (3, 2)
+    
+    fig, axs = plt.subplots(1,1, figsize=figsize)
+    if is_lever:
+        if dose is None:
+            doses = ['low', 'high']
+        else:
+            doses = [dose]
+        monkeys = ['SPOCK', 'PEDRI']
+    else:
+        if dose is None:
+            doses = ['high']
+        else:
+            doses = [dose]
+        monkeys = ['Mary', 'MrJones']
+
+    # Create common time grid
+    common_times = np.arange(plot_range[0], plot_range[1], 1/60)
+
+    ax = axs
+    max_ratios = []
+    roc_times = []
+    # Process data for each subplot
+    for i, monkey in enumerate(monkeys):
+        # ax = axs[i]
+        # ax.set_title(f"{monkey_titles[monkey]}")
+        for j, dose_level in enumerate(doses):
+            
+            # Get max timescale ratio and ROC time for each session
+            for session_ind, session in enumerate(session_lists[monkey][dose_level]):
+                if is_lever:
+                    session_file = h5py.File(os.path.join(cfg.params.all_data_dir, cfg.params.data_class, 'mat', f"{session}.mat"))
+                    infusion_time = session_file['sessionInfo']['infusionStart'][0, 0]
+                else:
+                    session_file = h5py.File(os.path.join(cfg.params.all_data_dir, 'anesthesia', 'mat', cfg.params.data_class, f"{session}.mat"))
+                    infusion_time = session_file['sessionInfo']['drugStart'][0]
+                stability_vals = _process_session_data(session, delase_results, session_file, infusion_time, 
+                                                    common_times, top_percent, plot_range, interpolate=False)
+                if np.isnan(stability_vals).all():
+                    continue
+                max_ratios.append(np.max(stability_vals))
+                roc_times.append(rocs[monkey][dose_level][session_ind]/60)  # Convert to minutes
+            
+    # Plot scatter of ROC time vs max ratio
+    ax.scatter(max_ratios, roc_times, c=curve_color, alpha=0.6)
+            
+    # # Add trend line
+    # z = np.polyfit(max_ratios, roc_times, 1)
+    # p = np.poly1d(z)
+    # x_trend = np.linspace(min(max_ratios), max(max_ratios), 100)
+    # ax.plot(x_trend, p(x_trend), '--', c=curve_color, alpha=0.3)
+            
+    ax.set_xlabel('Max Timescale Ratio')
+    ax.set_ylabel('ROC Time (min)')
+
+    r, p = scipy.stats.pearsonr(max_ratios, roc_times)
+    fig.suptitle(f'{agent.capitalize()}\nr={r:.2f}, p={p:.2e}', c=curve_color, y=0.9)
+
+    plt.tight_layout()
+    if save_path is not None:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
+    else:
+        plt.show()
 
 
 def plot_session_timescales_grouped(cfg, agent, session_lists, delase_results, locs, rocs, ropaps, plot_range=(-15, 85), top_percent=0.1, 
@@ -338,6 +353,8 @@ def plot_session_timescales_grouped(cfg, agent, session_lists, delase_results, l
             ax.set_title(f"{monkey_titles[monkey]}") if len(doses) == 1 else ax.set_title(f"{monkey_titles[monkey]} {dose} dose")
             
             aligned_data = []
+            if dose not in session_lists[monkey]:
+                continue
             for session in session_lists[monkey][dose]:
                 if is_lever:
                     session_file = h5py.File(os.path.join(cfg.params.all_data_dir, cfg.params.data_class, 'mat', f"{session}.mat"))
@@ -380,18 +397,25 @@ def plot_section_stability_boxes(cfg, agent, session_lists, delase_results, top_
 
     is_lever = 'ket' in agent.lower() or 'dex' in agent.lower()
 
+    if dose is None:
+        doses = session_lists[monkey].keys()
+    else:
+        doses = [dose]
+
     for monkey in session_lists.keys():
         section_means[monkey] = {}
-        for dose in session_lists[monkey].keys():
-            section_means[monkey][dose] = {}
-            for session in session_lists[monkey][dose]:
+        for _dose in doses:
+            section_means[monkey][_dose] = {}
+            if _dose not in session_lists[monkey]:
+                continue
+            for session in session_lists[monkey][_dose]:
                 section_info, section_info_extended, section_colors, infusion_start = get_section_info(session, cfg.params.all_data_dir, cfg.params.data_class)
                 session_delase_results = delase_results[session]['all']
                 
                 # Convert times to minutes relative to infusion
                 time_vals = (session_delase_results.window_start - infusion_start) / 60
                 
-                section_means[monkey][dose][session] = {}
+                section_means[monkey][_dose][session] = {}
                 for section_name, (start_time, end_time) in section_info:
                     # Get indices for times in this section
                     section_mask = (time_vals >= start_time) & (time_vals < end_time)
@@ -400,15 +424,10 @@ def plot_section_stability_boxes(cfg, agent, session_lists, delase_results, top_
                     section_stability = session_delase_results.stability_params[section_mask].apply(lambda x: x[:int(len(x)*top_percent)]).values
                     if len(section_stability) > 0:
                         section_stability = np.hstack(section_stability)
-                        section_means[monkey][dose][session][section_name] = np.mean(section_stability.mean())
+                        section_means[monkey][_dose][session][section_name] = np.mean(section_stability.mean())
 
     if figsize is None:
         figsize = (4.2, 2)
-
-    if dose is None:
-        doses = session_lists[monkey].keys()
-    else:
-        doses = [dose]
 
     # Create figure based on number of doses
     if len(doses) > 1:
@@ -422,6 +441,8 @@ def plot_section_stability_boxes(cfg, agent, session_lists, delase_results, top_
     # For each monkey
     for i, monkey in enumerate(session_lists.keys()):
         for j, dose in enumerate(doses):
+            if dose not in session_lists[monkey]:
+                continue
             # Get subplot
             ax = axs[i, j] if len(doses) > 1 else axs[i]
             
@@ -429,9 +450,10 @@ def plot_section_stability_boxes(cfg, agent, session_lists, delase_results, top_
             box_data = []
             colors = []
             labels = []
+
             for section_name, _ in section_info:
                 section_values = [section_means[monkey][dose][session][section_name] 
-                                for session in session_lists[monkey][dose]]
+                                for session in session_lists[monkey][dose] if section_name in section_means[monkey][dose][session]]
                 box_data.append(section_values)
                 colors.append(section_colors[section_name])
                 labels.append(section_name)
@@ -461,7 +483,11 @@ def plot_section_stability_boxes(cfg, agent, session_lists, delase_results, top_
                 # Get awake and unconscious oddball values
                 awake_vals = [section_means[monkey][dose][session]['awake oddball'] 
                             for session in session_lists[monkey][dose]]
-                unconscious_vals = [section_means[monkey][dose][session]['unconscious oddball']
+                if agent == 'dexmedetomidine':
+                    unconscious_vals = [section_means[monkey][dose][session]['early unconscious']
+                                for session in session_lists[monkey][dose]]
+                else:
+                    unconscious_vals = [section_means[monkey][dose][session]['unconscious oddball']
                                 for session in session_lists[monkey][dose]]
                 
                 # Perform t-test
@@ -480,7 +506,10 @@ def plot_section_stability_boxes(cfg, agent, session_lists, delase_results, top_
                 if t_stat > 0:  # Only show if unconscious > awake
                     # Get positions for the significance bars
                     awake_idx = labels.index('awake oddball')
-                    unconscious_idx = labels.index('unconscious oddball')
+                    if agent == 'dexmedetomidine':
+                        unconscious_idx = labels.index('early unconscious')
+                    else:
+                        unconscious_idx = labels.index('unconscious oddball')
                     
                     # Get min height (most negative) of boxes and whiskers
                     max_heights = []
@@ -500,8 +529,37 @@ def plot_section_stability_boxes(cfg, agent, session_lists, delase_results, top_
                     ax.plot([unconscious_idx + 1, unconscious_idx + 1], [bar_height, bar_tips], 'k-')
                     
                     # Add stars below the bar
-                    ax.text((awake_idx + unconscious_idx + 2)/2, bar_height * 0.9,  # Position below bar
+                    if stars == 'ns':
+                        barmult = 0.84
+                    else:
+                        barmult = 0.9
+                    ax.text((awake_idx + unconscious_idx + 2)/2, bar_height * barmult,  # Position below bar
                         stars, ha='center', va='top')
+                if t_stat < 0:  # Only show if unconscious < awake
+                    # Get positions for the significance bars
+                    awake_idx = labels.index('awake oddball')
+                    unconscious_idx = labels.index('unconscious oddball')
+                    
+                    # Get max height (most positive) of boxes and whiskers
+                    max_heights = []
+                    for i in range(min(awake_idx, unconscious_idx), max(awake_idx, unconscious_idx) + 1):
+                        max_heights.extend(box_data[i])
+                    y_max = max(max_heights)  # Most positive value
+                    
+                    # Plot significance bar with more space above and upward-pointing tips
+                    if 'dex' in agent.lower():
+                        bar_height = y_max * 1.3  # Multiplier to move bar higher
+                        bar_tips = y_max * 1.25   # Tips extend upward
+                    else:
+                        bar_height = y_max * 1.5  # Multiplier to move bar higher
+                        bar_tips = y_max * 1.4   # Tips extend upward
+                    ax.plot([awake_idx + 1, unconscious_idx + 1], [bar_height, bar_height], 'k-')
+                    ax.plot([awake_idx + 1, awake_idx + 1], [bar_height, bar_tips], 'k-')
+                    ax.plot([unconscious_idx + 1, unconscious_idx + 1], [bar_height, bar_tips], 'k-')
+                    
+                    # Add stars above the bar with smaller font and higher position
+                    ax.text((awake_idx + unconscious_idx + 2)/2, bar_height * 0.96,  # Reduced vertical offset
+                        stars, ha='center', va='bottom', fontsize=6)  # Reduced font size to 6
             else:
                 # Get awake and loading dose values
                 awake_vals = [section_means[monkey][dose][session]['awake'] 
@@ -551,215 +609,69 @@ def plot_section_stability_boxes(cfg, agent, session_lists, delase_results, top_
         plt.show()
 
 
-# def plot_session_timescales_grouped(cfg, session_lists, delase_results, locs, rocs, ropaps, plot_range=(-15, 85), top_percent=0.1, verbose=False):
-#     if 'Lvr' in cfg.params.data_class or 'lever' in cfg.params.data_class:
-#         # Create a 2x2 grid of subplots
-#         fig, axs = plt.subplots(2, 2, figsize=(15, 8), sharex=True)
-#         fig.suptitle('Average DeLASE Results by Monkey and Dose (Aligned to Infusion)', fontsize=14)
+def plot_sensory_responses_etdc(agent, curve_colors, sensory_responses, leadup, response, dt=0.001, n_delays=1, delay_interval=1, plot_legend=False, save_path=None):
+    responses_etdc = get_responses_etdc(sensory_responses, agent, leadup, n_delays, delay_interval)
+    time_vals = np.arange(-leadup + (n_delays - 1)*delay_interval, response)*dt
 
-#         # Plot for each monkey and dose
-#         for i, monkey in enumerate(['SPOCK', 'PEDRI']):
-#             for j, dose in enumerate(['low', 'high']):
-#                 ax = axs[i, j]
-#                 ax.set_title(f"{monkey} - Dose {dose}", fontsize=12)
-                
-#                 # Collect aligned data from all sessions
-#                 aligned_data = []
-#                 # min_start = float('inf')
-#                 # max_end = float('-inf')
-                
-#                 # # First pass - find common time window
-#                 # for session in session_lists[monkey][dose]:
-#                 #     time_vals = delase_results[session]['all'].window_start.values  # Convert to numpy array
-#                 #     session_file = h5py.File(os.path.join(cfg.params.all_data_dir, cfg.params.data_class, 'mat', f"{session}.mat"))
-#                 #     infusion_time = session_file['sessionInfo']['infusionStart'][0, 0]
-#                 #     aligned_times = (time_vals - infusion_time) / 60  # Convert to minutes
-#                 #     min_start = min(min_start, aligned_times[0])
-#                 #     max_end = max(max_end, aligned_times[-1])
-                    
-#                 # # Create common time grid
-#                 common_times = np.arange(plot_range[0], plot_range[1], 1/60)  # 1-second intervals converted to minutes
-                
-#                 # Second pass - interpolate onto common grid
-#                 for session in session_lists[monkey][dose]:
-#                     time_vals = delase_results[session]['all'].window_start.values  # Convert to numpy array
-#                     session_file = h5py.File(os.path.join(cfg.params.all_data_dir, cfg.params.data_class, 'mat', f"{session}.mat"))
-#                     infusion_time = session_file['sessionInfo']['infusionStart'][0, 0]
-                    
-#                     # Process stability params to get timescales
-#                     def process_stability(x):
-#                         # Keep only negative roots and convert to timescales
-#                         timescales = -1/np.array([r for r in x if r < 0])
-#                         if len(timescales) == 0:
-#                             return np.nan
-#                         # Take only top percentage of timescales
-#                         n_keep = max(1, int(len(timescales) * top_percent))
-#                         top_timescales = np.sort(timescales)[-n_keep:]
-#                         return np.exp(np.mean(np.log(top_timescales)))  # geometric mean
-                    
-#                     # Calculate baseline (pre-infusion) geometric mean
-#                     pre_infusion_mask = time_vals < infusion_time
-#                     baseline_timescales = []
-#                     for params in delase_results[session]['all'].stability_params[pre_infusion_mask]:
-#                         timescales = -1/np.array([r for r in params if r < 0])
-#                         if len(timescales) > 0:
-#                             # Take only top percentage of timescales
-#                             n_keep = max(1, int(len(timescales) * top_percent))
-#                             top_timescales = np.sort(timescales)[-n_keep:]
-#                             baseline_timescales.extend(top_timescales)
-#                     baseline = np.exp(np.mean(np.log(baseline_timescales)))
-                    
-#                     # Calculate normalized timescales for each window
-#                     stability_vals = delase_results[session]['all'].stability_params.apply(process_stability).values / baseline
-                    
-#                     # Align to infusion start and convert to minutes
-#                     aligned_times = (time_vals - infusion_time) / 60
-                    
-#                     # Interpolate onto common grid
-#                     interpolated = np.interp(common_times, aligned_times, stability_vals)
-#                     aligned_data.append(interpolated)
-                    
-#                 # Convert to numpy array for easier calculations
-#                 aligned_data = np.array(aligned_data)
-                
-#                 # Calculate geometric mean and standard error
-#                 log_data = np.log(aligned_data)
-#                 mean_log = np.nanmean(log_data, axis=0)
-#                 sem_log = np.nanstd(log_data, axis=0) / np.sqrt(np.sum(~np.isnan(log_data), axis=0))
-                
-#                 mean_stability = np.exp(mean_log)
-#                 upper_bound = np.exp(mean_log + sem_log)
-#                 lower_bound = np.exp(mean_log - sem_log)
-                
-#                 # Plot geometric mean and standard error
-#                 ax.plot(common_times, mean_stability, label='Geometric Mean')
-#                 ax.fill_between(common_times, 
-#                             lower_bound,
-#                             upper_bound,
-#                             alpha=0.3)
-                
-#                 ax.axvline(0, c='k', ls='--', label='Infusion Start')
-#                 ax.axhline(1, c='k', ls=':', label='Baseline')
-#                 ax.set_xlabel('Time Relative to Infusion (min)', fontsize=10)
-#                 ax.set_ylabel('Normalized Timescale Ratio', fontsize=10)
-#                 ax.tick_params(labelsize=9)
-#                 ax.legend(fontsize=9)
+    if agent == 'propofol':
+        fig, axs = plt.subplots(1, 2, figsize=(4.2, 1.5))
+    else:
+        fig, axs = plt.subplots(2, 2, figsize=(4.2, 3))
 
-#         for i, monkey in enumerate(['SPOCK', 'PEDRI']):
-#             for j, dose in enumerate(['low', 'high']):
-#                 ax = axs[i, j]
-#                 ylim = ax.get_ylim()
-#                 roc_vals = np.array(rocs[monkey][dose])/60
-#                 ropap_vals = np.array(ropaps[monkey][dose])/60
-
-#                 mean_roc = np.mean(roc_vals)
-#                 mean_ropap = np.mean(ropap_vals)
-#                 sem_roc = np.std(roc_vals) / np.sqrt(len(roc_vals))
-#                 sem_ropap = np.std(ropap_vals) / np.sqrt(len(ropap_vals))
-#                 ax.axvline(mean_roc, c='g', ls='-', label=f"ROC mean: {mean_roc:.2f} ± {sem_roc:.2f}")
-#                 ax.axvline(mean_ropap, c='orange', ls='-', label=f"ROPAP mean: {mean_ropap:.2f} ± {sem_ropap:.2f}")
-#                 ax.fill_betweenx(ylim, mean_roc - sem_roc, mean_roc + sem_roc, alpha=0.3, color='g')
-#                 ax.fill_betweenx(ylim, mean_ropap - sem_ropap, mean_ropap + sem_ropap, alpha=0.3, color='orange')
-
-#         plt.tight_layout()
-#         plt.show()
-#     else: # propofol is the data class
-#         # Create figure with 1 row, 2 columns for Mary and MrJones
-#         fig, axs = plt.subplots(1, 2, figsize=(15, 5))
-#         fig.suptitle('Average DeLASE Results by Monkey (Aligned to Infusion)', fontsize=14)
-        
-#         for i, monkey in enumerate(['Mary', 'MrJones']):
-#             ax = axs[i]
-#             ax.set_title(f'{monkey}', fontsize=12)
-            
-#             # Collect aligned data from all sessions
-#             aligned_data = []
-            
-#             # Create fixed time window: 15 min before to 85 min after infusion start
-#             # (60 min infusion + 25 min after)
-#             common_times = np.arange(plot_range[0], plot_range[1], 1/60) # stepped by 1 second
-            
-#             # Process each session
-#             for session in session_lists[monkey]:
-#                 time_vals = delase_results[session]['all'].window_start.values
-#                 session_file = h5py.File(os.path.join(cfg.params.all_data_dir, 'anesthesia', 'mat', cfg.params.data_class, f"{session}.mat"))
-#                 infusion_time = session_file['sessionInfo']['drugStart'][0]
+    for monkey in responses_etdc.keys():
+        for dose in responses_etdc[monkey].keys():
+            if agent == 'propofol':
+                if monkey == 'Mary':
+                    ax_idx = 0
+                else:
+                    ax_idx = 1
+            else:
+                if monkey == 'SPOCK':
+                    ax_idx = (0, 0) if dose == 'low' else (1, 0)
+                else:  # PEDRI
+                    ax_idx = (0, 1) if dose == 'low' else (1, 1)
                 
-#                 # Process stability params to get timescales
-#                 def process_stability(x):
-#                     # Keep only negative roots and convert to timescales
-#                     timescales = -1/np.array([r for r in x if r < 0])
-#                     if len(timescales) == 0:
-#                         return np.nan
-#                     # Take only top percentage of timescales
-#                     n_keep = max(1, int(len(timescales) * top_percent))
-#                     top_timescales = np.sort(timescales)[-n_keep:]
-#                     return np.exp(np.mean(np.log(top_timescales)))  # geometric mean
+            for section in responses_etdc[monkey][dose].keys():
+                mean_trajectory = responses_etdc[monkey][dose][section].mean(axis=0)[:, 0]
+                sem_trajectory = responses_etdc[monkey][dose][section].std(axis=0)[:, 0] / np.sqrt(responses_etdc[monkey][dose][section].shape[0])
                 
-#                 # Calculate baseline (pre-infusion) geometric mean
-#                 # pre_infusion_mask = time_vals < infusion_time
-#                 pre_infusion_mask = (time_vals >= (infusion_time + plot_range[0]*60)) & (time_vals < infusion_time)
-#                 baseline_timescales = []
-#                 for params in delase_results[session]['all'].stability_params[pre_infusion_mask]:
-#                     timescales = -1/np.array([r for r in params if r < 0])
-#                     if len(timescales) > 0:
-#                         # Take only top percentage of timescales
-#                         n_keep = max(1, int(len(timescales) * top_percent))
-#                         top_timescales = np.sort(timescales)[-n_keep:]
-#                         baseline_timescales.extend(top_timescales)
-#                 baseline = np.exp(np.mean(np.log(baseline_timescales)))
+                color = 'green' if 'awake' in section else 'purple'
                 
-#                 # Calculate normalized timescales for each window
-#                 stability_vals = delase_results[session]['all'].stability_params.apply(process_stability).values / baseline
+                # Plot individual trajectories
+                for i in range(responses_etdc[monkey][dose][section].shape[0]):
+                    axs[ax_idx].plot(time_vals, responses_etdc[monkey][dose][section][i, :, 0], 
+                                color=color, alpha=0.1)
+                                # color=color, alpha=0.6)
                 
-#                 # Align to infusion start and convert to minutes
-#                 aligned_times = (time_vals - infusion_time) / 60
+                # Plot mean and standard error
+                axs[ax_idx].plot(time_vals, mean_trajectory, color=color)
+                axs[ax_idx].fill_between(time_vals, 
+                                    mean_trajectory - sem_trajectory,
+                                    mean_trajectory + sem_trajectory,
+                                    color=color, alpha=0.2)
                 
-#                 # Interpolate onto common grid
-#                 interpolated = np.interp(common_times, aligned_times, stability_vals)
-#                 aligned_data.append(interpolated)
-                
-#             # Convert to numpy array for easier calculations
-#             aligned_data = np.array(aligned_data)
-            
-#             # Calculate geometric mean and standard error
-#             log_data = np.log(aligned_data)
-#             mean_log = np.nanmean(log_data, axis=0)
-#             sem_log = np.nanstd(log_data, axis=0) / np.sqrt(np.sum(~np.isnan(log_data), axis=0))
-            
-#             mean_stability = np.exp(mean_log)
-#             upper_bound = np.exp(mean_log + sem_log)
-#             lower_bound = np.exp(mean_log - sem_log)
-            
-#             # Plot geometric mean and standard error
-#             ax.plot(common_times, mean_stability, label='Geometric Mean')
-#             ax.fill_between(common_times, 
-#                         lower_bound,
-#                         upper_bound,
-#                         alpha=0.3)
-            
-#             ax.axvline(0, c='k', ls='--', label='Infusion Start')
-#             ax.axhline(1, c='k', ls=':', label='Baseline')
-#             ax.set_xlabel('Time Relative to Infusion (min)', fontsize=10)
-#             ax.set_ylabel('Normalized Timescale Ratio', fontsize=10)
-#             ax.tick_params(labelsize=9)
-#             ax.legend(fontsize=9)
-            
-#             # Add ROC and ROPAP lines
-#             ylim = ax.get_ylim()
-#             roc_vals = (np.array(rocs[monkey]))/60
-#             ropap_vals = (np.array(ropaps[monkey]))/60
-
-#             mean_roc = np.mean(roc_vals)
-#             # mean_ropap = np.mean(ropap_vals)
-#             sem_roc = np.std(roc_vals) / np.sqrt(len(roc_vals))
-#             # sem_ropap = np.std(ropap_vals) / np.sqrt(len(ropap_vals))
-#             ax.axvline(mean_roc, c='g', ls='-', label=f"ROC mean: {mean_roc:.2f} ± {sem_roc:.2f}")
-#             # ax.axvline(mean_ropap, c='orange', ls='-', label=f"ROPAP mean: {mean_ropap:.2f} ± {sem_ropap:.2f}")
-#             ax.fill_betweenx(ylim, mean_roc - sem_roc, mean_roc + sem_roc, alpha=0.3, color='g')
-#             # ax.fill_betweenx(ylim, mean_ropap - sem_ropap, mean_ropap + sem_ropap, alpha=0.3, color='orange')
-
-#         plt.tight_layout()
-#         plt.show()
+            axs[ax_idx].set_title(f'{monkey_titles[monkey]}\n{dose} dose')
+            axs[ax_idx].set_xlabel('Time Relative to Tone Start (s)')
+            if n_delays > 1:
+                axs[ax_idx].set_ylabel('Eigen-Time-Delay Coordinate 1')
+            else:
+                axs[ax_idx].set_ylabel('PC 1')
+            # axs[ax_idx].legend(['Awake', 'Unconscious'], loc='upper right')
+            axs[ax_idx].grid(True, alpha=0.3)
+    # if plot_legend is True, add one green line (awake) and one purple line (unconscious)
+    if plot_legend:
+        # Create empty lines for legend
+        line1, = plt.plot([], [], color='green', label='Baseline', visible=True)
+        line2, = plt.plot([], [], color='purple', label='Anesthesia', visible=True)
+        # Add legend centered below all subplots
+        fig.legend(handles=[line1, line2], loc='center', bbox_to_anchor=(0.5, 0), ncol=2)
+    
+    # Add agent name as title
+    fig.suptitle(f'{agent.capitalize()}', c=curve_colors[agent], y=0.9)
+    plt.tight_layout()
+    if save_path is not None:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
+    else:
+        plt.show()
 
 
