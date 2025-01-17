@@ -1,9 +1,11 @@
 import h5py
+import itertools
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as font_manager
 import numpy as np
 import os
 import scipy
+import scipy.stats as stats
 from tqdm.auto import tqdm
 
 from .data_utils import get_loc_roc, get_section_info
@@ -673,5 +675,103 @@ def plot_sensory_responses_etdc(agent, curve_colors, sensory_responses, leadup, 
         plt.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
     else:
         plt.show()
+
+def plot_power_analysis(plot_info, data_class, agent, curve_colors, save_path=None):
+    # Set up the plot
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(5, 2), sharey='row')
+    axes = [ax1, ax2]
+    monkey_titles = {
+        'Mary': 'NHP1',
+        'MrJones': 'NHP2',
+        'SPOCK': 'NHP3',
+        'PEDRI': 'NHP4'
+    }
+    bands = ['delta', 'theta', 'alpha', 'beta', 'gamma']
+    x = np.arange(len(bands))
+    width = 0.35
+
+    # Colors for each frequency band
+    # colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+    colors = curve_colors[agent]
+
+    data_dict = plot_info[(data_class, agent)]
+
+    monkeys = list(data_dict.keys())
+    doses = list(data_dict[monkeys[0]].keys())
+
+    # Process and plot data for each monkey
+    for idx, monkey in enumerate(monkeys):
+        ax = axes[idx]
+        
+        # Add horizontal line at y=0
+        ax.axhline(y=0, color='black', linewidth=0.5)
+        
+        for dose_idx, dose in enumerate(doses):
+            means = []
+            sems = []
+            
+            # Calculate mean and SEM for each frequency band
+            for band in bands:
+                data = data_dict[monkey][dose][band]
+                mean = np.mean(data)
+                sem = np.std(data) / np.sqrt(len(data))
+                means.append(mean)
+                sems.append(sem)  # Fixed: Was using mean instead of sem for error bars
+            
+            # Create the bar plot with different styles for low/high doses
+            # Offset the x positions for low vs high dose
+            x_pos = x - width/2 if dose == 'low' else x + width/2
+            if dose == 'low':
+                bars = ax.bar(x_pos, means, width, yerr=sems, capsize=5, color=colors,
+                            alpha=0.5, hatch='///', label='Low dose')
+            else:
+                bars = ax.bar(x_pos, means, width, yerr=sems, capsize=5, color=colors,
+                            label='High dose')
+            
+        # Add significance stars for each bar
+        for band_idx, band in enumerate(bands):
+            for dose_idx, dose in enumerate(doses):
+                data = data_dict[monkey][dose][band]
+                # Perform one-sample t-test against 0
+                t_stat, p_val = stats.ttest_1samp(data, 0)
+                
+                # Determine number of stars based on p-value
+                if p_val < 0.001:
+                    stars = '***'
+                elif p_val < 0.01:
+                    stars = '**'
+                elif p_val < 0.05:
+                    stars = '*'
+                else:
+                    continue
+                    
+                # Position stars above or below bar based on mean value
+                x_pos = band_idx - width/2 if dose == 'low' else band_idx + width/2
+                y_pos = np.mean(data)
+                y_pos = (y_pos + (np.std(data) / np.sqrt(len(data)))) if y_pos >= 0 else (y_pos - (np.std(data) / np.sqrt(len(data))))  # Add SEM to position stars above error bars
+                offset = 0.02 if y_pos >= 0 else -0.12  # Offset from bar
+                ax.text(x_pos, y_pos + offset, stars, ha='center', va='bottom')
+            
+        # Customize the plot
+        ax.set_title(monkey_titles[monkey])
+        ax.set_xticks(x)
+        ax.set_xticklabels(bands, rotation=45)
+        if idx == 0:
+            ax.set_ylabel('Correlation Between\nInstability and Power')
+        ax.axhline(y=0, color='black', linewidth=0.5)
+        # ax.set_ylim(0, 1)
+
+    # Add single ylabel for all subplots
+    # fig.text(0.02, 0.5, 'Correlation Between\nInstability and Power', 
+    #          va='center', rotation='vertical')
+
+    # Adjust layout and display
+    fig.suptitle(f'{agent.capitalize()}', c=curve_colors[agent], y=0.9)
+    plt.tight_layout()
+    if save_path is not None:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
+    else:
+        plt.show()
+
 
 
