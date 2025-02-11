@@ -12,6 +12,8 @@ from sklearn.decomposition import PCA
 import sys
 from tqdm.auto import tqdm
 
+os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
+
 from UniversalUnconsciousness.data_utils import collect_delase_indices_to_run, collect_grid_indices_to_run, get_grid_params_to_use, get_grid_search_run_list, get_noise_filter_info, get_pca_chosen
 from UniversalUnconsciousness.hdf5_utils import convert_char_array, convert_h5_string_array, TransposedDatasetView
 
@@ -22,6 +24,13 @@ def main(cfg):
     # --------------------------------------------------------------------------
     # Load session list
     # --------------------------------------------------------------------------
+    # if os.path.exists('/om2/user/eisenaj'):
+    #     cfg.params.all_data_dir = cfg.params.all_data_dir_openmind
+    #     cfg.params.results_dir = cfg.params.results_dir_openmind
+    # else:
+    #     cfg.params.all_data_dir = cfg.params.all_data_dir_engaging
+    #     cfg.params.results_dir = cfg.params.results_dir_engaging
+
     if 'propofol' in cfg.params.data_class:
         session_list = [f[:-4] for f in os.listdir(os.path.join(cfg.params.all_data_dir, 'anesthesia', 'mat', cfg.params.data_class)) if f.endswith('.mat')]
     else:
@@ -29,7 +38,7 @@ def main(cfg):
     session_list = [session for session in session_list if session not in ['PEDRI_Ketamine_20220203']]
 
     # session_list = [session for session in session_list if 'Dex' not in session]
-    session_list = [session for session in session_list if 'Dex' in session]
+    # session_list = [session for session in session_list if 'Dex' in session]
 
     areas = ['all']
 
@@ -70,9 +79,14 @@ def main(cfg):
         all_indices_to_run = collect_grid_indices_to_run(cfg, session_list, areas, noise_filter_info, pca_chosen, log=log, verbose=True)
         # --------------------------------------------------------------------------
         # Running grid search
-        # --------------------------------------------------------------------------m
-        os.chdir('/home/eisenaj/code/UniversalUnconsciousness/UniversalUnconsciousness')
-        batch_size = 25
+        # --------------------------------------------------------------------------
+        if os.path.exists('/om2/user/eisenaj'):
+            os.chdir('/om2/user/eisenaj/code/UniversalUnconsciousness/UniversalUnconsciousness')
+            batch_size = 250
+        else:
+            os.chdir('/home/eisenaj/code/UniversalUnconsciousness/UniversalUnconsciousness')
+            batch_size = 25
+        # batch_size = cfg.params.batch_size
 
         if not all_indices_to_run:
             log.info("No indices to run - breaking")
@@ -125,8 +139,13 @@ def main(cfg):
         # --------------------------------------------------------------------------
         # Running DeLASE
         # --------------------------------------------------------------------------
-        os.chdir('/home/eisenaj/code/UniversalUnconsciousness/UniversalUnconsciousness')
-        batch_size = 25
+        if os.path.exists('/om2/user/eisenaj'):
+            os.chdir('/om2/user/eisenaj/code/UniversalUnconsciousness/UniversalUnconsciousness')
+            batch_size = 250
+        else:
+            os.chdir('/home/eisenaj/code/UniversalUnconsciousness/UniversalUnconsciousness')
+            batch_size = 25
+        # batch_size = cfg.params.batch_size
 
         if not all_indices_to_run:
             log.info("No indices to run - breaking")

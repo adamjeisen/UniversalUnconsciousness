@@ -1,0 +1,21 @@
+EI_RNN_params:
+  _target_: UniversalUnconsciousness.network_modelling.EI_RNN.EI_RNN
+  g: 1.3
+  alpha: 0.55
+  # N: 1250
+  # K: 250
+  N: 3500
+  K: 700
+  m_0: 1.0
+  tau: 0.01 # s
+  propofol_scale: 1.0
+  ketamine_scale: 1.0
+  ketamine_dose: 'low'
+
+dt: 0.001 # s
+T: 10 # s
+random_state: 42
+transient_pct: 0.1
+
+save_dir: '/scratch2/weka/millerlab/eisenaj/UniversalUnconsciousness/network_modelling/ketamine_sims'
+

@@ -1,0 +1,14 @@
+defaults:
+- params: netmodel
+- slurm: default
+- override hydra/sweeper: list
+- _self_
+hydra:
+  sweeper:
+    list_params:
+      params.EI_RNN_params.g:
+      - '1.65'
+      params.EI_RNN_params.ketamine_dose:
+      - low
+      params.EI_RNN_params.ketamine_scale:
+      - '0.95'

@@ -10,15 +10,13 @@ import sys
 import time
 import torch
 
-sys.path.append('/home/eisenaj/code/UniversalUnconsciousness')
 log = logging.getLogger('DeLASE Logger')
 log.info("Current directory: " + os.getcwd())
-from data_utils import filter_data, get_data_class, get_delase_run_list, load_session_data, load_window_from_chunks
+from UniversalUnconsciousness.data_utils import filter_data, get_data_class, get_delase_run_list, load_session_data, load_window_from_chunks
+from UniversalUnconsciousness.hdf5_utils import TransposedDatasetView
 
 from delase import DeLASE 
 from delase.metrics import aic, mase, mse, r2_score
-
-from hdf5_utils import TransposedDatasetView
 
 def compute_delase(cfg, session, run_params):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'

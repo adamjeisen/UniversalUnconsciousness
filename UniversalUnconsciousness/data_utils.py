@@ -251,7 +251,7 @@ def get_section_info(session, all_data_dir, data_class):
             'late recovery': '#FFBF47',
             'induction': '#61C9A8'
         }
-
+        os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
         session_file = h5py.File(os.path.join(all_data_dir, 'anesthesia', 'mat', data_class, session + '.mat'), 'r')
         infusion_start = session_file['sessionInfo']['drugStart'][0, 0]
 
@@ -891,23 +891,6 @@ def get_pct_correct(cfg, session_file, lever_window=60, stride=0.1):
 
 def find_noisy_data(cfg, session, return_all=False):
 
-    # vars_to_load = []
-    # if session_info is None:
-    #     vars_to_load += ['sessionInfo']
-    # if lfp is None:
-    #     vars_to_load += ['lfp']
-    # if trial_info is None:
-    #     vars_to_load += ['trialInfo']
-
-    # os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
-    # session_vars, T, N, dt = load_session_data(session, cfg.params.all_data_dir, vars_to_load, data_class=cfg.params.data_class)
-    # if session_info is None:
-    #     session_info = session_vars['sessionInfo']
-    # if lfp is None:
-    #     lfp = session_vars['lfp']
-    # if trial_info is None:
-    #     trial_info = session_vars['trialInfo']
-
     if 'propofol' in cfg.params.data_class:
         filename = os.path.join(cfg.params.all_data_dir, 'anesthesia', 'mat', cfg.params.data_class, f"{session}.mat")
     else:
@@ -994,8 +977,8 @@ def get_noise_filter_info(cfg, session_list, log=None, verbose=False):
             noise_filter_dir = os.path.join(cfg.params.noise_filter_results_dir, cfg.params.data_class)
             os.makedirs(noise_filter_dir, exist_ok=True)
             noise_filter_file = f"{session}__window_{cfg.params.window}__wakethresh_{cfg.params.wake_amplitude_thresh}__anesthesiathresh_{cfg.params.anesthesia_amplitude_thresh}__electrodenum_{cfg.params.electrode_num_thresh}.pkl"
-                
             if noise_filter_file in os.listdir(noise_filter_dir):
+                # print(f"File found for session {session}: {os.path.join(noise_filter_dir, noise_filter_file)}")
                 noise_filter_info[session] = pd.read_pickle(os.path.join(noise_filter_dir, noise_filter_file))
             else:
                 if verbose:
@@ -1089,7 +1072,7 @@ def collect_grid_indices_to_run(cfg, session_list, areas, noise_filter_info, pca
         filter_folder = f"[{cfg.params.high_pass},{cfg.params.low_pass}]" if cfg.params.low_pass is not None or cfg.params.high_pass is not None else 'NO_FILTER'
         grid_search_run_list = get_grid_search_run_list(cfg, session, grid_search_window_start_ts, noise_filter_info[session]['bad_electrodes'], verbose=verbose)
         noise_filter_folder = f"NOISE_FILTERED_{cfg.params.window}_{cfg.params.wake_amplitude_thresh}_{cfg.params.anesthesia_amplitude_thresh}_{cfg.params.electrode_num_thresh}" if cfg.params.noise_filter else "NO_NOISE_FILTER"
-
+    
         for area in areas:
             
             pca_folder = "NO_PCA" if not cfg.params.pca else f"PCA_{pca_chosen[session][area]}"
@@ -1099,7 +1082,6 @@ def collect_grid_indices_to_run(cfg, session_list, areas, noise_filter_info, pca
             
             saved_files = os.listdir(save_dir)
 
-            
             if not cfg.params.group_ranks:
                 # filter runs for those with valid rank
                 filtered_run_list = []

@@ -3,7 +3,8 @@ anesthetic_agent_list:
   - [anesthesiaLvrOdd, ketamine] 
   - [anesthesiaLvrOdd, dexmedetomidine]
 
-img_save_dir: "/orcd/data/ekmiller/001/eisenaj/UniversalUnconsciousness/figure_images"
+# img_save_dir: "/orcd/data/ekmiller/001/eisenaj/UniversalUnconsciousness/figure_images" # ENGAGING
+img_save_dir: "/scratch2/weka/millerlab/eisenaj/UniversalUnconsciousness/figure_images"
 
 curve_colors:
   propofol: '#46115E'

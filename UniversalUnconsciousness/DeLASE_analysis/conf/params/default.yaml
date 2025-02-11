@@ -1,13 +1,15 @@
 # data_class: leverOddball
-# results_dir: /scratch2/weka/millerlab/eisenaj/UniversalUnconsciousness
-results_dir: /orcd/data/ekmiller/001/eisenaj/UniversalUnconsciousness
+results_dir: /scratch2/weka/millerlab/eisenaj/UniversalUnconsciousness
+# results_dir_engaging: /orcd/data/ekmiller/001/eisenaj/UniversalUnconsciousness
+# results_dir: null
 delase_results_dir: ${params.results_dir}/DeLASE_results
 grid_search_results_dir: ${params.results_dir}/grid_searches
 noise_filter_results_dir: ${params.results_dir}/noise_filter_info
-# all_data_dir: '/scratch2/weka/millerlab/eisenaj/datasets/anesthesia/mat'
-all_data_dir: /orcd/data/ekmiller/001/common/datasets
-data_class: anesthesiaLvrOdd
-# data_class: propofolPuffTone
+all_data_dir: '/scratch2/weka/millerlab/eisenaj/datasets'
+# all_data_dir: /orcd/data/ekmiller/001/common/datasets
+# all_data_dir: null
+# data_class: anesthesiaLvrOdd
+data_class: propofolPuffTone
 session: null
 area: null
 run_index: 0
@@ -19,8 +21,8 @@ window: 15
 T_pred: null
 
 # grid search
-grid_set: grid_set4 # grid set name
-# grid_set: grid_set4
+# grid_set: grid_set4 # grid set name # ANESTHESIALVRODD
+grid_set: grid_set5 # grid set name # PROPOFOLPUFFTONE
 num_windows_per_section: 4
 group_ranks: True # group ranks so that the same CPU is used for all ranks
 stat_to_use: aic
@@ -50,7 +52,7 @@ normed: False
 subsample: 1
 # low_pass: 80
 # high_pass: 30
-low_pass: 0.1
-high_pass: 4
-# low_pass: null
-# high_pass: null
+# low_pass: 0.1
+# high_pass: 4
+low_pass: null
+high_pass: null
