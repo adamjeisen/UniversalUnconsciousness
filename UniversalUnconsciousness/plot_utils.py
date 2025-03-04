@@ -6,10 +6,11 @@ import numpy as np
 import os
 import scipy
 import scipy.stats as stats
+from scipy.stats import wilcoxon
 from tqdm.auto import tqdm
 
 from .data_utils import get_loc_roc, get_section_info
-from .sensory_responses import get_responses_etdc
+from .sensory_responses import get_responses_etdc, get_responses_acf
 
 # Set up figure based on data class
 monkey_titles = {
@@ -196,7 +197,7 @@ def _plot_statistics(ax, aligned_data, common_times, curve_color, timescales=Tru
     else:
         mean_stability = np.nanmean(aligned_data, axis=0)
         sem_stability = np.nanstd(aligned_data, axis=0) / np.sqrt(np.sum(~np.isnan(aligned_data), axis=0))
-        ax.plot(common_times, mean_stability, label='Geometric Mean', color=curve_color)
+        ax.plot(common_times, mean_stability, label='Mean', color=curve_color)
         ax.fill_between(common_times, mean_stability - sem_stability, mean_stability + sem_stability, alpha=0.3, color=curve_color)
 
 def _add_roc_ropap_lines(ax, rocs, ropaps, is_propofol=False):
@@ -512,130 +513,6 @@ def plot_section_stability_boxes(cfg, agent, session_lists, delase_results, top_
             # Set x-ticks
             ax.set_xticklabels([label.replace(' ', '\n') for label in labels], rotation=45, fontsize=5)
 
-            # # Perform statistical test
-            # if is_lever:
-            #     # Get awake and unconscious oddball values
-            #     awake_vals = [section_means[monkey][dose][session]['awake oddball'] 
-            #                 for session in session_lists[monkey][dose]]
-            #     if agent == 'dexmedetomidine':
-            #         unconscious_vals = [section_means[monkey][dose][session]['early unconscious']
-            #                     for session in session_lists[monkey][dose]]
-            #     else:
-            #         unconscious_vals = [section_means[monkey][dose][session]['unconscious oddball']
-            #                     for session in session_lists[monkey][dose]]
-                
-            #     # Perform t-test
-            #     t_stat, p_val = scipy.stats.ttest_ind(unconscious_vals, awake_vals)
-                
-            #     # Add stars based on p-value
-            #     if p_val < 0.001:
-            #         stars = '***'
-            #     elif p_val < 0.01:
-            #         stars = '**' 
-            #     elif p_val < 0.05:
-            #         stars = '*'
-            #     else:
-            #         stars = 'ns'
-                    
-            #     if t_stat > 0:  # Only show if unconscious > awake
-            #         # Get positions for the significance bars
-            #         awake_idx = labels.index('awake oddball')
-            #         if agent == 'dexmedetomidine':
-            #             unconscious_idx = labels.index('early unconscious')
-            #         else:
-            #             unconscious_idx = labels.index('unconscious oddball')
-                    
-            #         # Get min height (most negative) of boxes and whiskers
-            #         max_heights = []
-            #         for i in range(min(awake_idx, unconscious_idx), max(awake_idx, unconscious_idx) + 1):
-            #             max_heights.extend(box_data[i])
-            #         y_min = min(max_heights)  # Most negative value
-                    
-            #         # Plot significance bar with more space above and downward-pointing tips
-            #         if 'dex' in agent.lower():
-            #             bar_height = y_min * 0.3  # Much smaller multiplier to move bar higher (closer to 0)
-            #             bar_tips = y_min * 0.35   # Tips extend downward (away from 0)
-            #         else:
-            #             bar_height = y_min * 0.5  # Much smaller multiplier to move bar higher (closer to 0)
-            #             bar_tips = y_min * 0.6   # Tips extend downward (away from 0)
-            #         ax.plot([awake_idx + 1, unconscious_idx + 1], [bar_height, bar_height], 'k-')
-            #         ax.plot([awake_idx + 1, awake_idx + 1], [bar_height, bar_tips], 'k-')
-            #         ax.plot([unconscious_idx + 1, unconscious_idx + 1], [bar_height, bar_tips], 'k-')
-                    
-            #         # Add stars below the bar
-            #         if stars == 'ns':
-            #             barmult = 0.84
-            #         else:
-            #             barmult = 0.9
-            #         ax.text((awake_idx + unconscious_idx + 2)/2, bar_height * barmult,  # Position below bar
-            #             stars, ha='center', va='top')
-            #     if t_stat < 0:  # Only show if unconscious < awake
-            #         # Get positions for the significance bars
-            #         awake_idx = labels.index('awake oddball')
-            #         unconscious_idx = labels.index('unconscious oddball')
-                    
-            #         # Get max height (most positive) of boxes and whiskers
-            #         max_heights = []
-            #         for i in range(min(awake_idx, unconscious_idx), max(awake_idx, unconscious_idx) + 1):
-            #             max_heights.extend(box_data[i])
-            #         y_max = max(max_heights)  # Most positive value
-                    
-            #         # Plot significance bar with more space above and upward-pointing tips
-            #         if 'dex' in agent.lower():
-            #             bar_height = y_max * 1.3  # Multiplier to move bar higher
-            #             bar_tips = y_max * 1.25   # Tips extend upward
-            #         else:
-            #             bar_height = y_max * 1.5  # Multiplier to move bar higher
-            #             bar_tips = y_max * 1.4   # Tips extend upward
-            #         ax.plot([awake_idx + 1, unconscious_idx + 1], [bar_height, bar_height], 'k-')
-            #         ax.plot([awake_idx + 1, awake_idx + 1], [bar_height, bar_tips], 'k-')
-            #         ax.plot([unconscious_idx + 1, unconscious_idx + 1], [bar_height, bar_tips], 'k-')
-                    
-            #         # Add stars above the bar with smaller font and higher position
-            #         ax.text((awake_idx + unconscious_idx + 2)/2, bar_height * 0.96,  # Reduced vertical offset
-            #             stars, ha='center', va='bottom', fontsize=6)  # Reduced font size to 6
-            # else:
-                # # Get awake and loading dose values
-                # awake_vals = [section_means[monkey][dose][session]['awake'] 
-                #             for session in session_lists[monkey][dose]]
-                # loading_vals = [section_means[monkey][dose][session]['loading dose']
-                #             for session in session_lists[monkey][dose]]
-                
-                # # Perform t-test
-                # t_stat, p_val = scipy.stats.ttest_ind(loading_vals, awake_vals)
-                
-                # # Add stars based on p-value
-                # if p_val < 0.001:
-                #     stars = '***'
-                # elif p_val < 0.01:
-                #     stars = '**' 
-                # elif p_val < 0.05:
-                #     stars = '*'
-                # else:
-                #     stars = 'ns'
-                    
-                # if t_stat > 0:  # Only show if loading dose > awake
-                #     # Get positions for the significance bars
-                #     awake_idx = labels.index('awake')
-                #     loading_idx = labels.index('loading dose')
-                    
-                #     # Get min height (most negative) of boxes and whiskers
-                #     max_heights = []
-                #     for i in range(min(awake_idx, loading_idx), max(awake_idx, loading_idx) + 1):
-                #         max_heights.extend(box_data[i])
-                #     y_min = min(max_heights)  # Most negative value
-                    
-                #     # Plot significance bar with more space above and downward-pointing tips
-                #     bar_height = y_min * 0.3  # Much smaller multiplier to move bar higher (closer to 0)
-                #     bar_tips = y_min * 0.35  # Tips extend downward (away from 0)
-                #     ax.plot([awake_idx + 1, loading_idx + 1], [bar_height, bar_height], 'k-')
-                #     ax.plot([awake_idx + 1, awake_idx + 1], [bar_height, bar_tips], 'k-')
-                #     ax.plot([loading_idx + 1, loading_idx + 1], [bar_height, bar_tips], 'k-')
-                    
-                #     # Add stars below the bar
-                #     ax.text((awake_idx + loading_idx + 2)/2, bar_height * 0.9,  # Position below bar
-                #         stars, ha='center', va='top')
-
             if is_lever:
                 # Get awake and unconscious oddball values
                 awake_vals = [section_means[monkey][dose][session]['awake oddball'] 
@@ -653,8 +530,9 @@ def plot_section_stability_boxes(cfg, agent, session_lists, delase_results, top_
                 unconscious_vals = [section_means[monkey][dose][session]['loading dose']
                                     for session in session_lists[monkey][dose]]
             
-            # Perform t-test
-            t_stat, p_val = scipy.stats.ttest_ind(unconscious_vals, awake_vals)
+            # Perform wilcoxon test
+            stat, p_val = wilcoxon(unconscious_vals, awake_vals)
+            mean_diff = np.mean(unconscious_vals) - np.mean(awake_vals)
             
             # Determine significance stars based on the p-value
             if p_val < 0.001:
@@ -684,8 +562,7 @@ def plot_section_stability_boxes(cfg, agent, session_lists, delase_results, top_
             axis_range = y_bar_max - y_bar_min
             offset = axis_range * 0.05   # For example, 5% of the axis range
             tick_length = offset * 0.3
-            
-            if t_stat > 0:
+            if mean_diff > 0:
                 y_bar = y_bar_max + offset
                 # Draw horizontal significance line
                 ax.plot([x1, x2], [y_bar, y_bar], 'k-')
@@ -710,7 +587,7 @@ def plot_section_stability_boxes(cfg, agent, session_lists, delase_results, top_
                 if top_y > ax.get_ylim()[1]:
                     ax.set_ylim(ax.get_ylim()[0], top_y + offset)
             
-            elif t_stat < 0:
+            elif mean_diff < 0:
                 y_bar = y_bar_min - offset
                 # Draw horizontal significance line
                 ax.plot([x1, x2], [y_bar, y_bar], 'k-')
@@ -734,6 +611,69 @@ def plot_section_stability_boxes(cfg, agent, session_lists, delase_results, top_
                 # if we've exceeded the ylim, set the ylim to the y_bar_min including the offset and text
                 if bottom_y < ax.get_ylim()[0]:
                     ax.set_ylim(bottom_y - offset, ax.get_ylim()[1])
+            
+            if agent == 'ketamine':
+                awake_idx = labels.index('awake oddball')
+                recovery_idx = labels.index('recovery oddball')
+                x1 = awake_idx + 1
+                x2 = recovery_idx + 1
+                y_bar_max = np.max(box_data_max[awake_idx:recovery_idx + 1])
+                y_bar_min = np.min(box_data_min[awake_idx:recovery_idx + 1])
+                axis_range = y_bar_max - y_bar_min
+                offset = axis_range * 0.05   # For example, 5% of the axis range
+                tick_length = offset * 0.3
+
+
+                awake_vals = [section_means[monkey][dose][session]['awake oddball'] 
+                              for session in session_lists[monkey][dose]]
+                unconscious_vals = [section_means[monkey][dose][session]['recovery oddball']
+                                    for session in session_lists[monkey][dose]]
+                
+                stat, p_val = wilcoxon(unconscious_vals, awake_vals)
+                mean_diff = np.mean(unconscious_vals) - np.mean(awake_vals)
+                if mean_diff > 0:
+                    y_bar = y_bar_max + offset
+                    ax.plot([x1, x2], [y_bar, y_bar], 'k-')
+                    ax.plot([x1, x1], [y_bar, y_bar - tick_length], 'k-')
+                    ax.plot([x2, x2], [y_bar, y_bar - tick_length], 'k-')
+                    text_obj = ax.text((x1 + x2) / 2, y_bar + tick_length, stars, ha='center', va='bottom')
+
+                    # Ensure the figure is drawn so that the text's bounding box is available.
+                    plt.draw()
+
+                    # Get the renderer from the figure's canvas
+                    renderer = text_obj.figure.canvas.get_renderer()
+
+                    # Obtain the bounding box in display (pixel) coordinates
+                    bbox = text_obj.get_window_extent(renderer=renderer)
+
+                    # Convert the top of the bounding box (y1) into data coordinates
+                    top_x, top_y = ax.transData.inverted().transform((bbox.x1, bbox.y1))
+                    # if we've exceeded the ylim, set the ylim to the y_bar_min including the offset and text
+                    if top_y > ax.get_ylim()[1]:
+                        ax.set_ylim(ax.get_ylim()[0], top_y + offset)
+                else:
+                    y_bar = y_bar_min - offset
+                    ax.plot([x1, x2], [y_bar, y_bar], 'k-')
+                    ax.plot([x1, x1], [y_bar, y_bar + tick_length], 'k-')
+                    ax.plot([x2, x2], [y_bar, y_bar + tick_length], 'k-')
+                    text_obj = ax.text((x1 + x2) / 2, y_bar - tick_length, stars, ha='center', va='top')
+
+                    # Ensure the figure is drawn so that the text's bounding box is available.
+                    plt.draw()
+
+                    # Get the renderer from the figure's canvas
+                    renderer = text_obj.figure.canvas.get_renderer()
+
+                    # Obtain the bounding box in display (pixel) coordinates
+                    bbox = text_obj.get_window_extent(renderer=renderer)
+
+                    # Convert the bottom of the bounding box (y0) into data coordinates
+                    bottom_x, bottom_y = ax.transData.inverted().transform((bbox.x0, bbox.y0))
+                    # if we've exceeded the ylim, set the ylim to the y_bar_min including the offset and text
+                    if bottom_y < ax.get_ylim()[0]:
+                        ax.set_ylim(bottom_y - offset, ax.get_ylim()[1])
+                    
 
     plt.tight_layout()
     if save_path is not None:
@@ -742,14 +682,25 @@ def plot_section_stability_boxes(cfg, agent, session_lists, delase_results, top_
         plt.show()
 
 
-def plot_sensory_responses_etdc(agent, curve_colors, sensory_responses, leadup, response, dt=0.001, n_delays=1, delay_interval=1, plot_legend=False, save_path=None, dims=1):
-    responses_etdc = get_responses_etdc(sensory_responses, agent, leadup, n_delays, delay_interval)
+def plot_sensory_responses_etdc(agent, curve_colors, sensory_responses, leadup, response, dt=0.001, n_delays=1, delay_interval=1, plot_legend=False, save_path=None, dims=1, use_mean=False, min_time=None, max_time=None):
+    if use_mean and dims > 1:
+        raise ValueError('use_mean is not supported for dims > 1')
+    responses_etdc = get_responses_etdc(sensory_responses, n_delays, delay_interval, use_mean)
     time_vals = np.arange(-leadup + (n_delays - 1)*delay_interval, response)*dt
+    # raise ValueError(time_vals)
+
+    if min_time is None:
+        min_time = time_vals[0]/dt
+    if max_time is None:
+        max_time = time_vals[-1]/dt
+    plot_indices = np.where((time_vals/dt >= min_time) & (time_vals/dt <= max_time))[0]
 
     if agent == 'propofol':
+        n_plots = 1
         fig, axs = plt.subplots(1, 2, figsize=(4.2, 1.5))
     else:
-        fig, axs = plt.subplots(2, 2, figsize=(4.2, 3))
+        n_plots = len(responses_etdc[list(responses_etdc.keys())[0]].keys())
+        fig, axs = plt.subplots(n_plots, 2, figsize=(4.2, 1.5*n_plots))
 
     for monkey in responses_etdc.keys():
         for dose in responses_etdc[monkey].keys():
@@ -759,10 +710,13 @@ def plot_sensory_responses_etdc(agent, curve_colors, sensory_responses, leadup, 
                 else:
                     ax_idx = 1
             else:
-                if monkey == 'SPOCK':
-                    ax_idx = (0, 0) if dose == 'low' else (1, 0)
-                else:  # PEDRI
-                    ax_idx = (0, 1) if dose == 'low' else (1, 1)
+                if n_plots == 1:
+                    ax_idx = 0 if monkey == 'SPOCK' else 1
+                else:
+                    if monkey == 'SPOCK':
+                        ax_idx = (0, 0) if dose == 'low' else (1, 0)
+                    else:  # PEDRI
+                        ax_idx = (0, 1) if dose == 'low' else (1, 1)
                 
             for section in responses_etdc[monkey][dose].keys():
                 if dims == 1:
@@ -777,7 +731,7 @@ def plot_sensory_responses_etdc(agent, curve_colors, sensory_responses, leadup, 
                 # Plot individual trajectories
                 for i in range(responses_etdc[monkey][dose][section].shape[0]):
                     if dims == 1:
-                        axs[ax_idx].plot(time_vals, responses_etdc[monkey][dose][section][i, :, 0], 
+                        axs[ax_idx].plot(time_vals[plot_indices], responses_etdc[monkey][dose][section][i, plot_indices, 0], 
                                     color=color, alpha=0.1)
                     # if dims == 2:
                     #     axs[ax_idx].plot(responses_etdc[monkey][dose][section][i, :, 0], 
@@ -787,19 +741,20 @@ def plot_sensory_responses_etdc(agent, curve_colors, sensory_responses, leadup, 
                 
                 # Plot mean and standard error
                 if dims == 1:
-                    axs[ax_idx].plot(time_vals, mean_trajectory, color=color)
-                    axs[ax_idx].fill_between(time_vals, 
-                                    mean_trajectory - sem_trajectory,
-                                    mean_trajectory + sem_trajectory,
+                    axs[ax_idx].plot(time_vals[plot_indices], mean_trajectory[plot_indices], color=color)
+                    axs[ax_idx].fill_between(time_vals[plot_indices], 
+                                    mean_trajectory[plot_indices] - sem_trajectory[plot_indices],
+                                    mean_trajectory[plot_indices] + sem_trajectory[plot_indices],
                                     color=color, alpha=0.2)
                 elif dims == 2:
-                    axs[ax_idx].plot(mean_trajectory[:, 0], mean_trajectory[:, 1], color=color)
-                    axs[ax_idx].fill_between(mean_trajectory[:, 0], 
-                                    mean_trajectory[:, 1] - sem_trajectory[:, 1],
-                                    mean_trajectory[:, 1] + sem_trajectory[:, 1],
+                    axs[ax_idx].plot(mean_trajectory[plot_indices, 0], mean_trajectory[plot_indices, 1], color=color)
+                    axs[ax_idx].fill_between(mean_trajectory[plot_indices, 0], 
+                                    mean_trajectory[plot_indices, 1] - sem_trajectory[plot_indices, 1],
+                                    mean_trajectory[plot_indices, 1] + sem_trajectory[plot_indices, 1],
                                     color=color, alpha=0.2)
-                
-            axs[ax_idx].set_title(f'{monkey_titles[monkey]}\n{dose} dose')
+            
+            
+            axs[ax_idx].set_title(f'{monkey_titles[monkey]}' + ('\n' + dose + ' dose' if n_plots > 1 else ''))
             axs[ax_idx].set_xlabel('Time Relative to Tone Start (s)')
             if n_delays > 1:
                 axs[ax_idx].set_ylabel('Eigen-Time-Delay Coordinate 1')
@@ -814,6 +769,106 @@ def plot_sensory_responses_etdc(agent, curve_colors, sensory_responses, leadup, 
         line2, = plt.plot([], [], color='purple', label='Anesthesia', visible=True)
         # Add legend centered below all subplots
         fig.legend(handles=[line1, line2], loc='center', bbox_to_anchor=(0.5, 0), ncol=2)
+    
+    # Add agent name as title
+    fig.suptitle(f'{agent.capitalize()}', c=curve_colors[agent], y=0.9)
+    plt.tight_layout()
+    if save_path is not None:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
+    else:
+        plt.show()
+
+def plot_sensory_responses_acf(agent, curve_colors, sensory_responses, leadup, response, dt=0.001, n_delays=1, delay_interval=1, plot_legend=False, save_path=None, dims=1, method='grouped', use_mean=False, n_lags=50, n_ac_pts=None, verbose=False, data_save_dir=None):
+    responses_acf = get_responses_acf(sensory_responses, agent, response, n_delays, delay_interval, method, use_mean, n_lags, n_ac_pts, verbose, data_save_dir)
+    time_vals = np.arange(0, n_lags*dt + dt/2, dt)
+    
+    if agent == 'propofol':
+        n_plots = 1
+        fig, axs = plt.subplots(1, 2, figsize=(4.2, 1.5))
+    else:
+        n_plots = len(responses_acf[list(responses_acf.keys())[0]].keys())
+        fig, axs = plt.subplots(n_plots, 2, figsize=(4.2, 1.5*n_plots))
+
+    for monkey in responses_acf.keys():
+        for dose in responses_acf[monkey].keys():
+            if agent == 'propofol':
+                if monkey == 'Mary':
+                    ax_idx = 0
+                else:
+                    ax_idx = 1
+            else:
+                if n_plots == 1:
+                    ax_idx = 0 if monkey == 'SPOCK' else 1
+                else:
+                    if monkey == 'SPOCK':
+                        ax_idx = (0, 0) if dose == 'low' else (1, 0)
+                    else:  # PEDRI
+                        ax_idx = (0, 1) if dose == 'low' else (1, 1)
+
+            for section in responses_acf[monkey][dose].keys():
+                if responses_acf[monkey][dose][section] is not None:    
+                    mean_trajectory = responses_acf[monkey][dose][section].mean(axis=0)
+                    sem_trajectory = responses_acf[monkey][dose][section].std(axis=0) / np.sqrt(responses_acf[monkey][dose][section].shape[0])
+
+                    if 'awake' in section:
+                        color = 'green'
+                    elif 'recovery' in section:
+                        color = 'orange'
+                    else:
+                        color = 'purple'
+                    
+                
+                    axs[ax_idx].plot(time_vals, mean_trajectory, color=color)
+                    axs[ax_idx].fill_between(time_vals, 
+                                    mean_trajectory - sem_trajectory,
+                                    mean_trajectory + sem_trajectory,
+                                    color=color, alpha=0.2)
+            
+            # Statistical Tests: Compare at each time point
+            # --------------------------------------------------
+            # We'll run Wilcoxon tests if both data sets exist:
+            awake_data = responses_acf[monkey][dose].get('awake', None)
+            unconscious_data = responses_acf[monkey][dose].get('unconscious', None)
+            recovery_data = responses_acf[monkey][dose].get('recovery', None)
+
+            # Calculate y-coordinates for plotting significance stars at the bottom
+            y_min, y_max = axs[ax_idx].get_ylim()
+            purple_star_y = y_min + 0.04 * (y_max - y_min)   # Slightly above the bottom
+            orange_star_y = y_min + 0.08 * (y_max - y_min)  # Offset a bit above purple
+
+            # 1) Unconscious vs. Awake
+            if (awake_data is not None) and (unconscious_data is not None):
+                print(awake_data.shape, unconscious_data.shape)
+                n_time = min(awake_data.shape[1], unconscious_data.shape[1])
+                for t in range(1, n_time):
+                    # Perform Wilcoxon rank-sum (or rank test). You can replace with ranksums if you prefer
+                    _, pval = wilcoxon(awake_data[:, t], unconscious_data[:, t])
+                    if pval < 0.05:
+                        # Place a purple star at the bottom
+                        axs[ax_idx].plot(time_vals[t], purple_star_y, marker='*', color='purple', markersize=2, alpha=0.5)
+
+            # 2) Recovery vs. Awake
+            if (awake_data is not None) and (recovery_data is not None):
+                n_time = min(awake_data.shape[1], recovery_data.shape[1])
+                for t in range(1, n_time):
+                    _, pval = wilcoxon(awake_data[:, t], recovery_data[:, t])
+                    if pval < 0.05:
+                        # Place an orange star at the bottom (slightly above purple star)
+                        axs[ax_idx].plot(time_vals[t], orange_star_y, marker='*', color='orange', markersize=2, alpha=0.5)
+            # --------------------------------------------------
+
+            axs[ax_idx].set_title(f'{monkey_titles[monkey]}' + ('\n' + dose + ' dose' if n_plots > 1 else ''))
+            axs[ax_idx].set_xlabel('Time Lag (s)')
+            axs[ax_idx].set_ylabel('Autocorrelation')
+            axs[ax_idx].grid(True, alpha=0.3)
+        
+        if plot_legend:
+            # Create empty lines for legend
+            line1, = plt.plot([], [], color='green', label='Awake', visible=True)
+            line2, = plt.plot([], [], color='orange', label='Recovery', visible=True)
+            line3, = plt.plot([], [], color='purple', label='Unconscious', visible=True)
+            # Add legend centered below all subplots
+            fig.legend(handles=[line1, line2, line3], loc='center', bbox_to_anchor=(0.5, 0), ncol=3)
     
     # Add agent name as title
     fig.suptitle(f'{agent.capitalize()}', c=curve_colors[agent], y=0.9)

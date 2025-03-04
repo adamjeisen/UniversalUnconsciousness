@@ -3,12 +3,16 @@ import h5py
 import numpy as np
 import os
 from sklearn.decomposition import PCA
-
+from sklearn.metrics.pairwise import cosine_similarity
+import statsmodels.tsa.stattools as smt
+import torch
+from tqdm.auto import tqdm
+import pandas as pd
 from .data_utils import get_section_info
 from .hdf5_utils import convert_h5_string_array, TransposedDatasetView
 
 
-def get_sensory_responses_leverOddball(cfg, session, noise_filter_info, leadup = 250, response = 250):
+def get_sensory_responses_leverOddball(cfg, session, noise_filter_info, trial_type = 'lvr_tone', leadup = 250, response = 250):
     section_info, section_info_extended, section_colors, infusion_start = get_section_info(session, cfg.params.all_data_dir, cfg.params.data_class)
     section_info_dict = {name: times for name, times in section_info}
     
@@ -17,27 +21,35 @@ def get_sensory_responses_leverOddball(cfg, session, noise_filter_info, leadup =
     # ------------------------------
     # Get trial variables
     # ------------------------------
-    task_types = convert_h5_string_array(session_file, session_file['trialInfo']['task'])
-    trial_starts = session_file['trialInfo']['trialStart'][:, 0]
-    trial_ends = session_file['trialInfo']['trialEnd'][:, 0]
+    if trial_type == 'oddball':
+        # task_types = convert_h5_string_array(session_file, session_file['trialInfo']['task'])
+        # trial_starts = session_file['trialInfo']['trialStart'][:, 0]
+        # trial_ends = session_file['trialInfo']['trialEnd'][:, 0]
 
-    # odd_tone_onsets = session_file['trialInfo']['odd_toneOnsets'][:, 0]
-    # odd_tone_offsets = session_file['trialInfo']['odd_toneOffsets'][:, 0]
+        # odd_tone_onsets = session_file['trialInfo']['odd_toneOnsets'][:, 0]
+        # odd_tone_offsets = session_file['trialInfo']['odd_toneOffsets'][:, 0]
 
-    # odd_sequence_start = session_file['trialInfo']['odd_sequenceStart'][:, 0]
-    # odd_sequence_end = session_file['trialInfo']['odd_sequenceEnd'][:, 0]
+        odd_sequence_start = session_file['trialInfo']['odd_sequenceStart'][:, 0]
+        odd_sequence_end = session_file['trialInfo']['odd_sequenceEnd'][:, 0]
 
-    # oddball_trial_starts = trial_starts[task_types == 'oddball']
-    # oddball_trial_ends = trial_ends[task_types == 'oddball']
+        # oddball_trial_starts = trial_starts[task_types == 'oddball']
+        # oddball_trial_ends = trial_ends[task_types == 'oddball']
 
-    # odd_sequence = convert_h5_string_array(session_file, session_file['trialInfo']['odd_sequence'])
-    # unique_sequences = np.unique(odd_sequence)
+        # odd_sequence = convert_h5_string_array(session_file, session_file['trialInfo']['odd_sequence'])
+        # unique_sequences = np.unique(odd_sequence)
 
-    lvr_tone_onsets = session_file['trialInfo']['lvr_toneOnset'][:, 0]
-    lvr_tone_offsets = session_file['trialInfo']['lvr_toneOffset'][:, 0]
+        start_times = odd_sequence_start
+        end_times = odd_sequence_end
 
-    # lvr_outcome = convert_h5_string_array(session_file, session_file['trialInfo']['lvr_outcome'])
-    # binary_outcome = [outcome == 'correct' for outcome in lvr_outcome]
+    elif trial_type == 'lvr_tone':
+        lvr_tone_onsets = session_file['trialInfo']['lvr_toneOnset'][:, 0]
+        lvr_tone_offsets = session_file['trialInfo']['lvr_toneOffset'][:, 0]
+
+        start_times = lvr_tone_onsets
+        end_times = lvr_tone_offsets
+    else:
+        raise ValueError(f"Trial type {trial_type} not supported")
+
 
     lfp = TransposedDatasetView(session_file['lfp']).transpose()
     dt = session_file['lfpSchema']['smpInterval'][0, 0]
@@ -50,13 +62,21 @@ def get_sensory_responses_leverOddball(cfg, session, noise_filter_info, leadup =
     # ------------------------------
     # Lever tone responses
     # ------------------------------
-    start_times = lvr_tone_onsets
-    end_times = lvr_tone_offsets
 
     # First pass - count number of valid tones per section
+    
+    if trial_type == 'lvr_tone':
+        awake_section = 'awake lever2'
+        anesthesia_section = 'early unconscious'
+        recovery_section = 'late unconscious'
+    else:
+        awake_section = 'awake oddball'
+        anesthesia_section = 'unconscious oddball'
+        recovery_section = 'recovery oddball'
     section_tone_counts = {
-        "awake lever2": 0,
-        "early unconscious": 0
+        awake_section: 0,
+        anesthesia_section: 0,
+        recovery_section: 0
     }
 
     # Check which tones are valid and count them per section
@@ -103,7 +123,7 @@ def get_sensory_responses_leverOddball(cfg, session, noise_filter_info, leadup =
 
     return tone_lfps, dt
 
-def get_sensory_responses_propofol(cfg, session, noise_filter_info, trial_type, leadup = 250, response = 250):
+def get_sensory_responses_propofol(cfg, session, noise_filter_info, trial_type, leadup = 250, response = 250, area='all'):
     section_info, section_info_extended, section_colors, infusion_start = get_section_info(session, cfg.params.all_data_dir, cfg.params.data_class)
     section_info_dict = {name: times for name, times in section_info}
     
@@ -123,7 +143,13 @@ def get_sensory_responses_propofol(cfg, session, noise_filter_info, trial_type, 
     lfp = TransposedDatasetView(session_file['lfp']).transpose()
     dt = session_file['lfpSchema']['smpInterval'][0, 0]
 
-    valid_electrodes = np.arange(lfp.shape[1])[~np.isin(np.arange(lfp.shape[1]), noise_filter_info[session]['bad_electrodes'])]
+    areas = convert_h5_string_array(session_file, session_file['electrodeInfo']['area'])
+    if area == 'all':
+        electrode_inds = np.arange(lfp.shape[1])
+    else:
+        electrode_inds = np.where(areas == area)[0]
+
+    valid_electrodes = np.arange(lfp.shape[1])[~np.isin(electrode_inds, noise_filter_info[session]['bad_electrodes'])]
 
     valid_window_starts = noise_filter_info[session]['valid_window_starts']
     valid_window_ends = valid_window_starts + cfg.params.window
@@ -137,7 +163,8 @@ def get_sensory_responses_propofol(cfg, session, noise_filter_info, trial_type, 
     # First pass - count number of valid tones per section
     section_sensory_counts = {
         "awake": 0,
-        "maintenance dose": 0
+        "maintenance dose": 0,
+        "recovery": 0
     }
 
     # Check which tones are valid and count them per section
@@ -186,10 +213,9 @@ def get_sensory_responses_propofol(cfg, session, noise_filter_info, trial_type, 
 
 def get_responses_etdc(
         sensory_responses,
-        agent,  
-        leadup,
         n_delays = 1,
-        delay_interval = 1
+        delay_interval = 1,
+        use_mean = False
     ):
     
     responses_etdc = {}
@@ -207,18 +233,15 @@ def get_responses_etdc(
                     responses_de = embed_signal_torch(responses, n_delays, delay_interval)
                     if len(responses_de) == 0:
                         continue
-                    pca = PCA(n_components=2).fit(responses_de.mean(axis=0))
-                    temp = pca.transform(responses_de.mean(axis=0))
-                    # # ensure responses deflect downwards first
-                    # for j in range(temp.shape[-1]):
-                    #     if agent == 'propofol':
-                    #         first_portion = temp[leadup:leadup+100, j]
-                    #     else:
-                    #         first_portion = temp[leadup:leadup+50, j]
-                    #     # perform a linear regression on the first 100 ms
-                    #     slope, intercept = np.polyfit(np.arange(first_portion.shape[0]), first_portion, 1)
-                    #     if slope > 0:
-                    #         temp[:, j] = -temp[:, j]
+                    if use_mean:
+                        temp = np.expand_dims(responses_de.mean(axis=(0, 2)), axis=-1)
+                    else:
+                        pca = PCA(n_components=2).fit(responses_de.mean(axis=0))
+                        temp = pca.transform(responses_de.mean(axis=0))
+                        # pca = PCA(n_components=2).fit(responses_de.reshape(-1, responses_de.shape[-1]))
+                        # temp = pca.transform(responses_de.reshape(-1, responses_de.shape[-1])).reshape(responses_de.shape[0], responses_de.shape[1], 2)
+                        # temp = temp.mean(axis=0)
+                    # print(temp.shape)
                     if 'awake' in section:
                         responses_etdc[monkey][dose]['awake'].append(temp)
                     else:
@@ -226,3 +249,88 @@ def get_responses_etdc(
             responses_etdc[monkey][dose]['awake'] = np.array(responses_etdc[monkey][dose]['awake'])
             responses_etdc[monkey][dose]['unconscious'] = np.array(responses_etdc[monkey][dose]['unconscious'])
     return responses_etdc
+
+def get_responses_acf(
+        sensory_responses,
+        agent,
+        response,
+        n_delays = 1,
+        delay_interval = 1,
+        method = 'grouped',
+        use_mean = False,
+        n_lags = 50,
+        n_ac_pts = None,
+        verbose = False,
+        data_save_dir = None
+    ):
+
+    filename = f'{agent}_{response}_sensory_responses_acf_{n_delays}_{delay_interval}_{method}_{use_mean}_{n_lags}_{n_ac_pts}.pkl'
+    if data_save_dir is not None:
+        if os.path.exists(os.path.join(data_save_dir, filename)):
+            return pd.read_pickle(os.path.join(data_save_dir, filename))
+
+    responses_autocorrelation = {}
+
+    n_iterations = 0
+    for monkey in sensory_responses.keys():
+        for dose in sensory_responses[monkey].keys():
+            for session in sensory_responses[monkey][dose].keys():
+                for section in sensory_responses[monkey][dose][session].keys():
+                    n_iterations += 1
+
+    iterator = tqdm(total=n_iterations, desc='Computing ACF', disable=not verbose)
+
+    for monkey in sensory_responses.keys():
+        responses_autocorrelation[monkey] = {}
+        for dose in sensory_responses[monkey].keys():
+            responses_autocorrelation[monkey][dose] = {
+                'awake': [],
+                'unconscious': [],
+                'recovery': [],
+            }
+            for session in sensory_responses[monkey][dose].keys():
+                for section in sensory_responses[monkey][dose][session]:
+                    responses = sensory_responses[monkey][dose][session][section]
+                    responses_de = embed_signal_torch(responses, n_delays, delay_interval)
+                    if n_ac_pts is None:
+                        n_ac_pts = responses_de.shape[1]
+                    responses_de = responses_de[:, :n_ac_pts]
+                    if len(responses_de) == 0:
+                        continue
+                    if method == 'grouped':
+                        if use_mean:
+                            temp = np.expand_dims(responses_de.mean(axis=(0, 2)), axis=-1)[:, 0]
+                        else:
+                            pca = PCA(n_components=1).fit(responses_de.mean(axis=0))
+                            temp = pca.transform(responses_de.mean(axis=0))[:, 0]
+                        # temp is (time, 1)
+                        autocorrelation = smt.acf(temp, nlags=n_lags)
+                    elif method == 'individual':
+                        autocorrelation = np.array([smt.acf(responses_de[i, :, j], nlags=n_lags) for i in range(responses_de.shape[0]) for j in range(responses_de.shape[2])]).mean(axis=0)
+                    elif method == 'cosine':
+                        corrmat = cosine_sim_corrmat(responses_de)
+                        autocorrelation = np.array([np.mean([np.diag(corrmat[i], k=k).flatten() for i in range(corrmat.shape[0])]) for k in range(n_lags + 1)])
+                    else:
+                        raise ValueError(f"Method {method} not supported")
+                    if 'awake' in section:
+                        responses_autocorrelation[monkey][dose]['awake'].append(autocorrelation)
+                    elif 'recovery' in section or 'late unconscious' in section:
+                        responses_autocorrelation[monkey][dose]['recovery'].append(autocorrelation)
+                    else:
+                        responses_autocorrelation[monkey][dose]['unconscious'].append(autocorrelation)
+                    iterator.update(1)
+            responses_autocorrelation[monkey][dose]['awake'] = np.array(responses_autocorrelation[monkey][dose]['awake'])
+            responses_autocorrelation[monkey][dose]['recovery'] = np.array(responses_autocorrelation[monkey][dose]['recovery']) if len(responses_autocorrelation[monkey][dose]['recovery']) > 0 else None
+            responses_autocorrelation[monkey][dose]['unconscious'] = np.array(responses_autocorrelation[monkey][dose]['unconscious'])
+    iterator.close()
+    if data_save_dir is not None:
+        pd.to_pickle(responses_autocorrelation, os.path.join(data_save_dir, filename))
+    return responses_autocorrelation
+
+
+def cosine_sim_corrmat(responses_vecs):
+    responses_vecs = responses_vecs - np.expand_dims(responses_vecs.mean(axis=1), axis=1)
+    cosine_sim_corrmats = np.zeros((responses_vecs.shape[-3], responses_vecs.shape[-2], responses_vecs.shape[-2]))
+    for trial_num in range(responses_vecs.shape[-3]):
+        cosine_sim_corrmats[trial_num] = cosine_similarity(responses_vecs[trial_num])
+    return cosine_sim_corrmats
