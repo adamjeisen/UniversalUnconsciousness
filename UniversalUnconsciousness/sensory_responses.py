@@ -225,6 +225,7 @@ def get_responses_etdc(
         for dose in sensory_responses[monkey].keys():
             responses_etdc[monkey][dose] = {
                 'awake': [],
+                'recovery': [],
                 'unconscious': []
             }
             for session in sensory_responses[monkey][dose].keys():
@@ -236,6 +237,7 @@ def get_responses_etdc(
                     if use_mean:
                         temp = np.expand_dims(responses_de.mean(axis=(0, 2)), axis=-1)
                     else:
+                        print(responses_de.shape)
                         pca = PCA(n_components=2).fit(responses_de.mean(axis=0))
                         temp = pca.transform(responses_de.mean(axis=0))
                         # pca = PCA(n_components=2).fit(responses_de.reshape(-1, responses_de.shape[-1]))
@@ -244,9 +246,13 @@ def get_responses_etdc(
                     # print(temp.shape)
                     if 'awake' in section:
                         responses_etdc[monkey][dose]['awake'].append(temp)
+                    elif 'recovery' in section or 'late unconscious' in section:
+                        responses_etdc[monkey][dose]['recovery'].append(temp)
                     else:
                         responses_etdc[monkey][dose]['unconscious'].append(temp)
+                    
             responses_etdc[monkey][dose]['awake'] = np.array(responses_etdc[monkey][dose]['awake'])
+            responses_etdc[monkey][dose]['recovery'] = np.array(responses_etdc[monkey][dose]['recovery']) if len(responses_etdc[monkey][dose]['recovery']) > 0 else None
             responses_etdc[monkey][dose]['unconscious'] = np.array(responses_etdc[monkey][dose]['unconscious'])
     return responses_etdc
 

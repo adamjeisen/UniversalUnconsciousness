@@ -726,7 +726,7 @@ def plot_sensory_responses_etdc(agent, curve_colors, sensory_responses, leadup, 
                     mean_trajectory = responses_etdc[monkey][dose][section].mean(axis=0)[:, :dims]
                     sem_trajectory = responses_etdc[monkey][dose][section].std(axis=0)[:, :dims] / np.sqrt(responses_etdc[monkey][dose][section].shape[0])
                 
-                color = 'green' if 'awake' in section else 'purple'
+                color = 'green' if 'awake' in section else 'orange' if 'recovery' in section else 'purple'
                 
                 # Plot individual trajectories
                 for i in range(responses_etdc[monkey][dose][section].shape[0]):
@@ -758,17 +758,21 @@ def plot_sensory_responses_etdc(agent, curve_colors, sensory_responses, leadup, 
             axs[ax_idx].set_xlabel('Time Relative to Tone Start (s)')
             if n_delays > 1:
                 axs[ax_idx].set_ylabel('Eigen-Time-Delay Coordinate 1')
-            else:
+            elif not use_mean:
                 axs[ax_idx].set_ylabel('PC 1')
+            else:
+                axs[ax_idx].set_ylabel('Mean LFP (mV)')
             # axs[ax_idx].legend(['Awake', 'Unconscious'], loc='upper right')
             axs[ax_idx].grid(True, alpha=0.3)
     # if plot_legend is True, add one green line (awake) and one purple line (unconscious)
     if plot_legend:
         # Create empty lines for legend
-        line1, = plt.plot([], [], color='green', label='Baseline', visible=True)
-        line2, = plt.plot([], [], color='purple', label='Anesthesia', visible=True)
+        line1, = plt.plot([], [], color='green', label='awake', visible=True)
+        line2, = plt.plot([], [], color='orange', label='recovery', visible=True)
+        line3, = plt.plot([], [], color='purple', label='anesthesia', visible=True)
+        
         # Add legend centered below all subplots
-        fig.legend(handles=[line1, line2], loc='center', bbox_to_anchor=(0.5, 0), ncol=2)
+        fig.legend(handles=[line1, line2, line3], loc='center', bbox_to_anchor=(0.5, 0), ncol=3)
     
     # Add agent name as title
     fig.suptitle(f'{agent.capitalize()}', c=curve_colors[agent], y=0.9)
@@ -838,7 +842,6 @@ def plot_sensory_responses_acf(agent, curve_colors, sensory_responses, leadup, r
 
             # 1) Unconscious vs. Awake
             if (awake_data is not None) and (unconscious_data is not None):
-                print(awake_data.shape, unconscious_data.shape)
                 n_time = min(awake_data.shape[1], unconscious_data.shape[1])
                 for t in range(1, n_time):
                     # Perform Wilcoxon rank-sum (or rank test). You can replace with ranksums if you prefer
@@ -864,9 +867,10 @@ def plot_sensory_responses_acf(agent, curve_colors, sensory_responses, leadup, r
         
         if plot_legend:
             # Create empty lines for legend
-            line1, = plt.plot([], [], color='green', label='Awake', visible=True)
-            line2, = plt.plot([], [], color='orange', label='Recovery', visible=True)
-            line3, = plt.plot([], [], color='purple', label='Unconscious', visible=True)
+            line1, = plt.plot([], [], color='green', label='awake', visible=True)
+            line2, = plt.plot([], [], color='orange', label='recovery', visible=True)
+            line3, = plt.plot([], [], color='purple', label='unconscious', visible=True)
+            
             # Add legend centered below all subplots
             fig.legend(handles=[line1, line2, line3], loc='center', bbox_to_anchor=(0.5, 0), ncol=3)
     
