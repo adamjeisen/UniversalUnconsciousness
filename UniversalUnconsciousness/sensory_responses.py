@@ -136,6 +136,7 @@ def get_sensory_responses_propofol(cfg, session, noise_filter_info, trial_type, 
     elif trial_type == 'tonePuff':
         trial_starts = session_file['trialInfo']['cpt_toneOn'][:, 0]
         trial_ends = session_file['trialInfo']['cpt_toneOff'][:, 0]
+    
 
     trial_starts = trial_starts[trial_types == trial_type]
     trial_ends = trial_ends[trial_types == trial_type]
@@ -269,6 +270,12 @@ def get_responses_acf(
         verbose = False,
         data_save_dir = None
     ):
+    '''
+    method:
+        'grouped': compute the autocorrelation for the mean of the responses
+        'individual': compute the autocorrelation for each response (across all electrodes), and then average across electrodes
+        'cosine': compute the autocorrelation as high-dimensional cosine similarity of the responses (across all electrodes)
+    '''
 
     filename = f'{agent}_{response}_sensory_responses_acf_{n_delays}_{delay_interval}_{method}_{use_mean}_{n_lags}_{n_ac_pts}.pkl'
     if data_save_dir is not None:
@@ -312,7 +319,10 @@ def get_responses_acf(
                         # temp is (time, 1)
                         autocorrelation = smt.acf(temp, nlags=n_lags)
                     elif method == 'individual':
-                        autocorrelation = np.array([smt.acf(responses_de[i, :, j], nlags=n_lags) for i in range(responses_de.shape[0]) for j in range(responses_de.shape[2])]).mean(axis=0)
+                        # trials x time x electrodes
+                        autocorrelation = np.array([smt.acf(responses_de[i, :, j], nlags=n_lags) for i in range(responses_de.shape[0]) for j in range(responses_de.shape[2])])
+                        # (trials * electrodes) x autocorrelation time (n_lags + 1)
+                        autocorrelation = autocorrelation.mean(axis=0)
                     elif method == 'cosine':
                         corrmat = cosine_sim_corrmat(responses_de)
                         autocorrelation = np.array([np.mean([np.diag(corrmat[i], k=k).flatten() for i in range(corrmat.shape[0])]) for k in range(n_lags + 1)])

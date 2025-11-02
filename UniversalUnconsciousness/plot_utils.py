@@ -8,16 +8,17 @@ import scipy
 import scipy.stats as stats
 from scipy.stats import wilcoxon
 from tqdm.auto import tqdm
-
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+from statsmodels.sandbox.stats.multicomp import multipletests
 from .data_utils import get_loc_roc, get_section_info
 from .sensory_responses import get_responses_etdc, get_responses_acf
 
 # Set up figure based on data class
 monkey_titles = {
-    'Mary': 'NHP1',
-    'MrJones': 'NHP2',
-    'SPOCK': 'NHP3',
-    'PEDRI': 'NHP4'
+    'Mary': 'NHP 1',
+    'MrJones': 'NHP 2',
+    'SPOCK': 'NHP 3',
+    'PEDRI': 'NHP 4'
 }
 
 def clear_axes(ax):
@@ -52,78 +53,6 @@ def plot_curve_with_se(curve, x_vals=None, label=None, linestyle=None, c=None, a
 
     return ln
 
-def get_session_plot_info(cfg, session_list, verbose=False):
-    if 'Lvr' in cfg.params.data_class or 'lever' in cfg.params.data_class:
-        # Create a dictionary to organize sessions by monkey and dose
-        session_lists = {
-            'SPOCK': {'low': [], 'high': []},
-            'PEDRI': {'low': [], 'high': []}
-        }
-
-        # Populate the dictionary
-        for session in session_list:
-            monkey = session.split('_')[0]
-            dose = h5py.File(os.path.join(cfg.params.all_data_dir, cfg.params.data_class, 'mat', f"{session}.mat"))['sessionInfo']['dose'][0, 0]
-            if dose in [1.0, 5.0]:
-                session_lists[monkey]['low'].append(session)
-            if dose in [10.0, 20.0]:
-                session_lists[monkey]['high'].append(session)
-        
-        locs ={}
-        rocs = {}
-        ropaps = {}
-        iterator = tqdm(total=len(session_list), disable=not verbose)
-        for monkey in session_lists.keys():
-            locs[monkey] = {}
-            rocs[monkey] = {}
-            ropaps[monkey] = {}
-            for dose in session_lists[monkey].keys():
-                locs[monkey][dose] = []
-                rocs[monkey][dose] = []
-                ropaps[monkey][dose] = []
-                for session in session_lists[monkey][dose]:
-                    loc, roc, ropap = get_loc_roc(cfg, h5py.File(os.path.join(cfg.params.all_data_dir, cfg.params.data_class, 'mat', f"{session}.mat")))
-                    infusion_start = h5py.File(os.path.join(cfg.params.all_data_dir, cfg.params.data_class, 'mat', f"{session}.mat"))['sessionInfo']['infusionStart'][0, 0]
-                    locs[monkey][dose].append(loc - infusion_start)
-                    rocs[monkey][dose].append(roc - infusion_start)
-                    ropaps[monkey][dose].append(ropap - infusion_start)
-
-                    iterator.update()
-        iterator.close()
-    else: # propofol is the data class
-        session_lists = {
-            'Mary': {'high': []},
-            'MrJones': {'high': []}
-        }
-
-        for session in session_list:
-            monkey = session.split('-')[0]
-            session_lists[monkey]['high'].append(session)
-
-        locs = {}
-        rocs = {}
-        ropaps = {}
-        iterator = tqdm(total=len(session_list), disable=not verbose)
-        for monkey in session_lists.keys():
-            locs[monkey] = {}
-            rocs[monkey] = {}
-            ropaps[monkey] = {}
-            for dose in session_lists[monkey].keys():
-                locs[monkey][dose] = []
-                rocs[monkey][dose] = []
-                ropaps[monkey][dose] = []
-                for session in session_lists[monkey][dose]:
-                    loc, roc, ropap = get_loc_roc(cfg, h5py.File(os.path.join(cfg.params.all_data_dir, 'anesthesia', 'mat', cfg.params.data_class, f"{session}.mat")))
-                    infusion_start = h5py.File(os.path.join(cfg.params.all_data_dir, 'anesthesia', 'mat', cfg.params.data_class, f"{session}.mat"))['sessionInfo']['drugStart'][0, 0]
-                    locs[monkey][dose].append(loc - infusion_start)
-                    rocs[monkey][dose].append(roc - infusion_start)
-                    ropaps[monkey][dose].append(ropap - infusion_start)
-
-                iterator.update()
-        iterator.close()
-    # everything is relative to the infusion start, so infusion start is 0
-    return session_lists, locs, rocs, ropaps
-
 def _process_stability(x, top_percent):
     """Helper function to process stability parameters into timescales."""
     # Keep only negative roots and convert to timescales
@@ -151,14 +80,23 @@ def _calculate_baseline(stability_params, time_vals, infusion_time, plot_range, 
         return np.nan
     return np.exp(np.mean(np.log(baseline_timescales)))
 
-def _process_session_data(session, delase_results, session_file, infusion_time, common_times, top_percent, plot_range, interpolate=True, timescales=True):
+def _process_session_data(session, delase_results, session_file, infusion_time, common_times, top_percent, plot_range, interpolate=True, timescales=True, area='all', data_type='delase'):
     """Helper function to process individual session data."""
-    time_vals = delase_results[session]['all'].window_start.values
+    time_vals = delase_results[session][area].window_start.values
     
+    if data_type == 'delase':
+        data_input = delase_results[session][area].stability_params
+    elif data_type == 'var':
+        data_input = delase_results[session][area].stability_params_A
+    elif data_type == 'var_small':
+        data_input = delase_results[session][area].stability_params_A_small
+    else:
+        raise ValueError(f"Invalid data type: {data_type}")
+
     if timescales:
     # Calculate baseline and normalized timescales
         baseline = _calculate_baseline(
-            delase_results[session]['all'].stability_params,
+            data_input,
             time_vals, 
             infusion_time,
             plot_range,
@@ -168,21 +106,27 @@ def _process_session_data(session, delase_results, session_file, infusion_time, 
         if baseline == np.nan:
             return np.nan
 
-        stability_vals = delase_results[session]['all'].stability_params.apply(
+        stability_vals = data_input.apply(
             lambda x: _process_stability(x, top_percent)
-        ).values / baseline
+        ).values 
+        normalized_stability_vals = stability_vals / baseline
     else:
-        stability_vals = delase_results[session]['all'].stability_params.apply(lambda x: x[:int(top_percent*len(x))].mean())
+        stability_vals = data_input.apply(lambda x: x[:int(top_percent*len(x))].mean())
+        pre_infusion_mask = (time_vals >= (infusion_time + plot_range[0]*60)) & (time_vals < infusion_time)
+        baseline = stability_vals[pre_infusion_mask].mean()
+        normalized_stability_vals = stability_vals
     
     # Align to infusion start and interpolate
     aligned_times = (time_vals - infusion_time) / 60
     if interpolate:
         interpolated = np.interp(common_times, aligned_times, stability_vals)
+        interpolated_normalized = np.interp(common_times, aligned_times, normalized_stability_vals)
     else:
         interpolated = stability_vals
-    return interpolated
+        interpolated_normalized = normalized_stability_vals
+    return interpolated, interpolated_normalized, baseline
 
-def _plot_statistics(ax, aligned_data, common_times, curve_color, timescales=True):
+def _plot_statistics(ax, aligned_data, common_times, curve_color, timescales=True, aligned_data_unnormalized=None, baseline=None, plot_stars=True, baseline_inverse_timescales=None, aligned_data_inverse_timescales=None, label=None):
     """Helper function to plot geometric mean and standard error."""
     if timescales:
         log_data = np.log(aligned_data)
@@ -192,13 +136,61 @@ def _plot_statistics(ax, aligned_data, common_times, curve_color, timescales=Tru
         mean_stability = np.exp(mean_log)
         upper_bound = np.exp(mean_log + sem_log)
         lower_bound = np.exp(mean_log - sem_log)
-        ax.plot(common_times, mean_stability, label='Geometric Mean', color=curve_color)
+        ax.plot(common_times, mean_stability, label=(label if label is not None else 'Geometric Mean'), color=curve_color)
         ax.fill_between(common_times, lower_bound, upper_bound, alpha=0.3, color=curve_color)
     else:
         mean_stability = np.nanmean(aligned_data, axis=0)
         sem_stability = np.nanstd(aligned_data, axis=0) / np.sqrt(np.sum(~np.isnan(aligned_data), axis=0))
-        ax.plot(common_times, mean_stability, label='Mean', color=curve_color)
+        ax.plot(common_times, mean_stability, label=(label if label is not None else 'Mean'), color=curve_color)
         ax.fill_between(common_times, mean_stability - sem_stability, mean_stability + sem_stability, alpha=0.3, color=curve_color)
+    
+    if aligned_data_unnormalized is not None and baseline is not None and plot_stars:
+        # For each time point, perform Wilcoxon paired rank test
+        # between aligned_data at that time point and the baseline
+        ylim = ax.get_ylim()
+        star_y_pos = ylim[1] - 0.05 * (ylim[1] - ylim[0])  # Position stars near the top of the plot
+        
+        p_vals_all = np.zeros(aligned_data_unnormalized.shape[1])
+        for t in range(aligned_data_unnormalized.shape[1]):
+            # Extract data for this time point, removing NaN values
+            # time_data = aligned_data_unnormalized[:, t]
+            time_data = aligned_data_inverse_timescales[:, t]
+            valid_indices = ~np.isnan(time_data)
+            if np.sum(valid_indices) < 2:
+                continue  # Skip if not enough data points
+                
+            current_data = time_data[valid_indices]
+            # baseline_values = np.ones_like(current_data) * baseline  # Compare with baseline
+            baseline_values = np.ones_like(baseline_inverse_timescales) * baseline_inverse_timescales  # Compare with baseline
+            try:
+                # Perform Wilcoxon paired rank test
+                stat, p_val = wilcoxon(current_data, baseline_values)
+                p_vals_all[t] = p_val
+                # If significant, add a star at this position
+            except:
+                # Skip if the test fails (e.g., due to identical values)
+                continue
+        
+        # print("CORRECTING FOR MULTIPLE TESTING")
+        reject, p_adjusted, _, _ = multipletests(
+                                    p_vals_all,
+                                    alpha=0.05,
+                                    method='fdr_bh'
+                                )
+        # print(p_vals_all)
+        # print(p_adjusted)
+
+        for t in range(len(p_vals_all)):
+            if reject[t]:
+                star_marker = '*'
+                # if p_val < 0.01:
+                #     star_marker = '**'
+                # if p_val < 0.001:
+                #     star_marker = '***'
+                    
+                ax.text(common_times[t], star_y_pos, star_marker, 
+                        horizontalalignment='center', color=curve_color, 
+                        verticalalignment='center', fontsize=8)
 
 def _add_roc_ropap_lines(ax, rocs, ropaps, is_propofol=False):
     """Helper function to add ROC and ROPAP lines to plot."""
@@ -267,7 +259,8 @@ def plot_roc_vs_max_timescale(cfg, agent, session_lists, delase_results, locs, r
         monkeys = ['Mary', 'MrJones']
 
     # Create common time grid
-    common_times = np.arange(plot_range[0], plot_range[1], 1/60)
+    # common_times = np.arange(plot_range[0], plot_range[1], 1/60) # in minutes
+    common_times = np.arange(plot_range[0], plot_range[1], 1/2) # in minutes
 
     ax = axs
     max_ratios = []
@@ -287,7 +280,7 @@ def plot_roc_vs_max_timescale(cfg, agent, session_lists, delase_results, locs, r
                     session_file = h5py.File(os.path.join(cfg.params.all_data_dir, 'anesthesia', 'mat', cfg.params.data_class, f"{session}.mat"))
                     infusion_time = session_file['sessionInfo']['drugStart'][0]
                 stability_vals = _process_session_data(session, delase_results, session_file, infusion_time, 
-                                                    common_times, top_percent, plot_range, interpolate=False)
+                                                    common_times, top_percent, plot_range, interpolate=False, area=area)
                 if np.isnan(stability_vals).all():
                     continue
                 max_ratios.append(np.max(stability_vals))
@@ -322,7 +315,10 @@ def plot_session_stability_grouped(cfg, agent, session_lists, delase_results, lo
                                   figsize=None,
                                   dose=None,
                                   save_path=None,
-                                  verbose=False):
+                                  verbose=False,
+                                  area='all',
+                                  return_data=False,
+                                  data_type='delase'):
     is_lever = 'ket' in agent.lower() or 'dex' in agent.lower()
 
     curve_color = curve_colors[agent]
@@ -356,7 +352,34 @@ def plot_session_stability_grouped(cfg, agent, session_lists, delase_results, lo
     fig.suptitle(f'{agent.capitalize()}', c=curve_color, y=0.9)
 
     # Create common time grid
-    common_times = np.arange(plot_range[0], plot_range[1], 1/60)
+    # common_times = np.arange(plot_range[0], plot_range[1], 1/60) # in minutes
+    common_times = np.arange(plot_range[0], plot_range[1], 1/4) # in minutes
+    
+    # Normalize area to a list and prepare colors if multiple areas
+    if isinstance(area, (list, tuple, np.ndarray)):
+        areas_list = list(area)
+    else:
+        areas_list = [area]
+    multiple_areas = len(areas_list) > 1
+    if multiple_areas:
+        cmap = plt.cm.get_cmap('tab10', len(areas_list))
+        area_color_map = {a: cmap(i) for i, a in enumerate(areas_list)}
+    else:
+        area_color_map = {areas_list[0]: curve_color}
+
+    if return_data:
+        plot_return_data = {
+            'agent': agent,
+            'timescales': timescales,
+            'plot_range': plot_range,
+            'top_percent': top_percent,
+            'common_times': common_times,
+            'groups': {}
+        }
+        if multiple_areas:
+            plot_return_data['areas'] = areas_list
+        else:
+            plot_return_data['area'] = areas_list[0]
     
     # Process data for each subplot
     for i, monkey in enumerate(monkeys):
@@ -364,7 +387,12 @@ def plot_session_stability_grouped(cfg, agent, session_lists, delase_results, lo
             ax = axs[i, j] if len(doses) > 1 else axs[i]
             ax.set_title(f"{monkey_titles[monkey]}") if len(doses) == 1 else ax.set_title(f"{monkey_titles[monkey]} {dose} dose")
             
-            aligned_data = []
+            # Accumulate per-area data
+            per_area_aligned_data = {a: [] for a in areas_list}
+            per_area_aligned_data_unnormalized = {a: [] for a in areas_list}
+            per_area_baselines = {a: [] for a in areas_list}
+            per_area_baselines_inverse_timescales = {a: [] for a in areas_list}
+            per_area_aligned_data_inverse_timescales = {a: [] for a in areas_list}
             if dose not in session_lists[monkey]:
                 continue
             for session in session_lists[monkey][dose]:
@@ -375,14 +403,130 @@ def plot_session_stability_grouped(cfg, agent, session_lists, delase_results, lo
                     session_file = h5py.File(os.path.join(cfg.params.all_data_dir, 'anesthesia', 'mat', cfg.params.data_class, f"{session}.mat"))
                     infusion_time = session_file['sessionInfo']['drugStart'][0]
                 
-                interpolated = _process_session_data(session, delase_results, session_file, infusion_time, 
-                                                    common_times, top_percent, plot_range, timescales=timescales)
-                
-                aligned_data.append(interpolated)
-            
-            _plot_statistics(ax, np.array(aligned_data), common_times, curve_color, timescales=timescales)
+                for area_name in areas_list:
+                    interpolated, interpolated_normalized, baseline = _process_session_data(
+                        session, delase_results, session_file, infusion_time,
+                        common_times, top_percent, plot_range, timescales=timescales, area=area_name, data_type=data_type
+                    )
+                    interpolated_inverse_timescales, _, baseline_inverse_timescales = _process_session_data(
+                        session, delase_results, session_file, infusion_time,
+                        common_times, top_percent, plot_range, timescales=False, area=area_name, data_type=data_type
+                    )
+
+                    per_area_baselines[area_name].append(baseline)
+                    per_area_baselines_inverse_timescales[area_name].append(baseline_inverse_timescales)
+                    per_area_aligned_data[area_name].append(interpolated_normalized)
+                    per_area_aligned_data_unnormalized[area_name].append(interpolated)
+                    per_area_aligned_data_inverse_timescales[area_name].append(interpolated_inverse_timescales)
+
+            # Plot per-area statistics
+            per_area_group_data = {}
+            for area_name in areas_list:
+                aligned_data_arr = np.array(per_area_aligned_data[area_name])
+                aligned_data_unnorm_arr = np.array(per_area_aligned_data_unnormalized[area_name])
+                if timescales:
+                    plot_stars = True
+                    baseline_arr = np.array(per_area_baselines[area_name])
+                    baseline_inverse_arr = np.array(per_area_baselines_inverse_timescales[area_name])
+                    aligned_inverse_arr = np.array(per_area_aligned_data_inverse_timescales[area_name])
+                else:
+                    plot_stars = False
+                    baseline_arr = None
+                    baseline_inverse_arr = np.array(per_area_baselines_inverse_timescales[area_name])
+                    aligned_inverse_arr = np.array(per_area_aligned_data_inverse_timescales[area_name])
+
+                color_for_area = area_color_map[area_name]
+                _plot_statistics(
+                    ax,
+                    aligned_data_arr,
+                    common_times,
+                    color_for_area,
+                    timescales=timescales,
+                    aligned_data_unnormalized=aligned_data_unnorm_arr,
+                    baseline=baseline_arr,
+                    plot_stars=plot_stars,
+                    baseline_inverse_timescales=baseline_inverse_arr,
+                    aligned_data_inverse_timescales=aligned_inverse_arr,
+                    label=(area_name if multiple_areas else None)
+                )
+
+                if return_data:
+                    sessions_list = list(session_lists[monkey][dose])
+                    group_data = {
+                        'sessions': sessions_list,
+                        'aligned_data_normalized': aligned_data_arr,
+                        'aligned_data_unnormalized': aligned_data_unnorm_arr,
+                        'aligned_data_inverse_timescales': aligned_inverse_arr if timescales else np.array(per_area_aligned_data_inverse_timescales[area_name]),
+                        'baselines_timescales': np.array(per_area_baselines[area_name]) if timescales else None,
+                        'baselines_inverse_timescales': baseline_inverse_arr if timescales else np.array(per_area_baselines_inverse_timescales[area_name]),
+                    }
+                    # Map each session to its aligned curves for convenience
+                    per_session = {}
+                    for idx_sess, sess_name in enumerate(sessions_list):
+                        per_session[sess_name] = {
+                            'aligned_normalized': aligned_data_arr[idx_sess] if aligned_data_arr.ndim == 2 and idx_sess < aligned_data_arr.shape[0] else np.array([]),
+                            'aligned_unnormalized': aligned_data_unnorm_arr[idx_sess] if aligned_data_unnorm_arr.ndim == 2 and idx_sess < aligned_data_unnorm_arr.shape[0] else np.array([]),
+                            'aligned_inverse_timescales': aligned_inverse_arr[idx_sess] if aligned_inverse_arr is not None and aligned_inverse_arr.ndim == 2 and idx_sess < aligned_inverse_arr.shape[0] else np.array([]),
+                        }
+                    group_data['per_session'] = per_session
+                    if timescales:
+                        log_data = np.log(aligned_data_arr)
+                        valid_counts = np.sum(~np.isnan(log_data), axis=0)
+                        mean_log = np.nanmean(log_data, axis=0)
+                        sem_log = np.nanstd(log_data, axis=0) / np.sqrt(np.maximum(valid_counts, 1))
+                        group_data.update({
+                            'mean_curve': np.exp(mean_log),
+                            'lower_bound': np.exp(mean_log - sem_log),
+                            'upper_bound': np.exp(mean_log + sem_log),
+                            'mean_log': mean_log,
+                            'sem_log': sem_log,
+                        })
+                    else:
+                        valid_counts = np.sum(~np.isnan(aligned_data_arr), axis=0)
+                        mean_curve = np.nanmean(aligned_data_arr, axis=0)
+                        sem_curve = np.nanstd(aligned_data_arr, axis=0) / np.sqrt(np.maximum(valid_counts, 1))
+                        group_data.update({
+                            'mean_curve': mean_curve,
+                            'sem_curve': sem_curve,
+                        })
+                    per_area_group_data[area_name] = group_data
             # _add_roc_ropap_lines(ax, rocs[monkey][dose], ropaps[monkey][dose])
             _add_loc_roc_region(ax, locs[monkey][dose], rocs[monkey][dose], loc_roc_color)
+            if multiple_areas:
+                ax.legend(fontsize=7)
+
+            # Collect return data for this group if requested
+            if return_data:
+                if monkey not in plot_return_data['groups']:
+                    plot_return_data['groups'][monkey] = {}
+                if multiple_areas:
+                    plot_return_data['groups'][monkey][dose] = {
+                        'per_area': per_area_group_data,
+                        'sessions': list(session_lists[monkey][dose]),
+                        'locs': locs[monkey].get(dose, None),
+                        'rocs': rocs[monkey].get(dose, None),
+                        'ropaps': ropaps[monkey].get(dose, None) if isinstance(ropaps, dict) and monkey in ropaps else None,
+                    }
+                else:
+                    only_area = areas_list[0]
+                    gd = per_area_group_data[only_area]
+                    merged = {
+                        'sessions': gd['sessions'],
+                        'aligned_data_normalized': gd['aligned_data_normalized'],
+                        'aligned_data_unnormalized': gd['aligned_data_unnormalized'],
+                        'aligned_data_inverse_timescales': gd['aligned_data_inverse_timescales'],
+                        'baselines_timescales': gd['baselines_timescales'],
+                        'baselines_inverse_timescales': gd['baselines_inverse_timescales'],
+                        'per_session': gd.get('per_session', {}),
+                        'locs': locs[monkey].get(dose, None),
+                        'rocs': rocs[monkey].get(dose, None),
+                        'ropaps': ropaps[monkey].get(dose, None) if isinstance(ropaps, dict) and monkey in ropaps else None,
+                    }
+                    # Include summary curves if present
+                    for k in ['mean_curve', 'lower_bound', 'upper_bound', 'mean_log', 'sem_log', 'sem_curve']:
+                        if k in gd:
+                            merged[k] = gd[k]
+                    plot_return_data['groups'][monkey][dose] = merged
                 
     
     # Add common elements to all subplots
@@ -403,13 +547,18 @@ def plot_session_stability_grouped(cfg, agent, session_lists, delase_results, lo
         plt.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
     else:
         plt.show()
+    if return_data:
+        return plot_return_data
 
 def plot_section_stability_boxes(cfg, agent, session_lists, delase_results, top_percent=0.1,
                                   curve_colors={'propofol': 'blue', 'dexmedetomidine': 'purple', 'ketamine': 'red'},
                                   figsize=None,
                                   dose=None,
                                   save_path=None,
-                                  verbose=False):
+                                  section_info_type='plot',
+                                  verbose=False,
+                                  area='all',
+                                  data_type='delase'):
     section_means = {}
 
     is_lever = 'ket' in agent.lower() or 'dex' in agent.lower()
@@ -426,8 +575,8 @@ def plot_section_stability_boxes(cfg, agent, session_lists, delase_results, top_
             if _dose not in session_lists[monkey]:
                 continue
             for session in session_lists[monkey][_dose]:
-                section_info, section_info_extended, section_colors, infusion_start = get_section_info(session, cfg.params.all_data_dir, cfg.params.data_class)
-                session_delase_results = delase_results[session]['all']
+                section_info, section_info_extended, section_colors, infusion_start = get_section_info(session, cfg.params.all_data_dir, cfg.params.data_class, section_info_type=section_info_type)
+                session_delase_results = delase_results[session][area]
                 
                 # Convert times to minutes relative to infusion
                 time_vals = (session_delase_results.window_start - infusion_start) / 60
@@ -438,7 +587,14 @@ def plot_section_stability_boxes(cfg, agent, session_lists, delase_results, top_
                     section_mask = (time_vals >= start_time) & (time_vals < end_time)
                     
                     # Get stability params for times in this section
-                    section_stability = session_delase_results.stability_params[section_mask].apply(lambda x: x[:int(len(x)*top_percent)]).values
+                    if data_type == 'delase':
+                        section_stability = session_delase_results.stability_params[section_mask].apply(lambda x: x[:int(len(x)*top_percent)]).values
+                    elif data_type == 'var':
+                        section_stability = session_delase_results.stability_params_A[section_mask].apply(lambda x: x[:int(len(x)*top_percent)]).values
+                    elif data_type == 'var_small':
+                        section_stability = session_delase_results.stability_params_A_small[section_mask].apply(lambda x: x[:int(len(x)*top_percent)]).values
+                    else:
+                        raise ValueError(f"Invalid data type: {data_type}")
                     if len(section_stability) > 0:
                         section_stability = np.hstack(section_stability)
                         section_means[monkey][_dose][session][section_name] = np.mean(section_stability.mean())
@@ -467,7 +623,7 @@ def plot_section_stability_boxes(cfg, agent, session_lists, delase_results, top_
             box_data = []
             colors = []
             labels = []
-
+            
             for section_name, _ in section_info:
                 section_values = [section_means[monkey][dose][session][section_name] 
                                 for session in session_lists[monkey][dose] if section_name in section_means[monkey][dose][session]]
@@ -513,27 +669,34 @@ def plot_section_stability_boxes(cfg, agent, session_lists, delase_results, top_
             # Set x-ticks
             ax.set_xticklabels([label.replace(' ', '\n') for label in labels], rotation=45, fontsize=5)
 
-            if is_lever:
-                # Get awake and unconscious oddball values
-                awake_vals = [section_means[monkey][dose][session]['awake oddball'] 
-                              for session in session_lists[monkey][dose]]
-                if agent == 'dexmedetomidine':
-                    unconscious_vals = [section_means[monkey][dose][session]['early unconscious']
-                                    for session in session_lists[monkey][dose]]
-                else:
-                    unconscious_vals = [section_means[monkey][dose][session]['unconscious oddball']
+            if section_info_type == 'plot':
+                both_present = [session for session in session_lists[monkey][dose] if 'Awake' in section_means[monkey][dose][session] and 'Anesthesia' in section_means[monkey][dose][session]]
+                awake_vals = [section_means[monkey][dose][session]['Awake'] for session in both_present]
+                unconscious_vals = [section_means[monkey][dose][session]['Anesthesia'] for session in both_present]
+            elif section_info_type == 'regular':
+                if is_lever:
+                    # Get awake and unconscious oddball values
+                    awake_vals = [section_means[monkey][dose][session]['awake oddball'] 
+                                  for session in session_lists[monkey][dose]]
+                    if agent == 'dexmedetomidine':
+                        unconscious_vals = [section_means[monkey][dose][session]['early unconscious']
                                         for session in session_lists[monkey][dose]]
-            else:
-                # Get awake and loading dose values
-                awake_vals = [section_means[monkey][dose][session]['awake'] 
-                              for session in session_lists[monkey][dose]]
-                unconscious_vals = [section_means[monkey][dose][session]['loading dose']
-                                    for session in session_lists[monkey][dose]]
+                    else:
+                        unconscious_vals = [section_means[monkey][dose][session]['unconscious oddball']
+                                            for session in session_lists[monkey][dose]]
+                else:
+                    # Get awake and loading dose values
+                    awake_vals = [section_means[monkey][dose][session]['awake'] 
+                                  for session in session_lists[monkey][dose]]
+                    unconscious_vals = [section_means[monkey][dose][session]['loading dose']
+                                        for session in session_lists[monkey][dose]]
             
             # Perform wilcoxon test
-            stat, p_val = wilcoxon(unconscious_vals, awake_vals)
+            stat, p_val = wilcoxon(unconscious_vals, awake_vals, alternative='greater')
             mean_diff = np.mean(unconscious_vals) - np.mean(awake_vals)
             
+            print(f"{agent} {dose} unconscious-awake: {p_val}")
+
             # Determine significance stars based on the p-value
             if p_val < 0.001:
                 stars = '***'
@@ -544,16 +707,21 @@ def plot_section_stability_boxes(cfg, agent, session_lists, delase_results, top_
             else:
                 stars = 'ns'
             
-            # Determine the x-positions from the boxplot labels (1-indexed)
-            if is_lever:
-                awake_idx = labels.index('awake oddball')
-                if agent == 'dexmedetomidine':
-                    unconscious_idx = labels.index('early unconscious')
+            if section_info_type == 'plot':
+                awake_idx = labels.index('Awake')
+                unconscious_idx = labels.index('Anesthesia')
+            elif section_info_type == 'regular':
+                # Determine the x-positions from the boxplot labels (1-indexed)
+                if is_lever:
+                    awake_idx = labels.index('awake oddball')
+                    if agent == 'dexmedetomidine':
+                        unconscious_idx = labels.index('early unconscious')
+                    else:
+                        unconscious_idx = labels.index('unconscious oddball')
                 else:
-                    unconscious_idx = labels.index('unconscious oddball')
-            else:
-                awake_idx = labels.index('awake')
-                unconscious_idx = labels.index('loading dose')
+                    awake_idx = labels.index('awake')
+                    unconscious_idx = labels.index('loading dose')
+            
             x1 = awake_idx + 1
             x2 = unconscious_idx + 1
 
@@ -591,7 +759,6 @@ def plot_section_stability_boxes(cfg, agent, session_lists, delase_results, top_
                 y_bar = y_bar_min - offset
                 # Draw horizontal significance line
                 ax.plot([x1, x2], [y_bar, y_bar], 'k-')
-                # Draw vertical ticks at the ends
                 ax.plot([x1, x1], [y_bar, y_bar + tick_length], 'k-')
                 ax.plot([x2, x2], [y_bar, y_bar + tick_length], 'k-')
                 # Place the significance stars just below the bar
@@ -613,8 +780,15 @@ def plot_section_stability_boxes(cfg, agent, session_lists, delase_results, top_
                     ax.set_ylim(bottom_y - offset, ax.get_ylim()[1])
             
             if agent == 'ketamine':
-                awake_idx = labels.index('awake oddball')
-                recovery_idx = labels.index('recovery oddball')
+                # section_to_compare = 'Late Anesthesia'
+                section_to_compare = 'Emergence'
+                if section_info_type == 'plot':
+                    awake_idx = labels.index('Awake')
+                    recovery_idx = labels.index(section_to_compare)
+                elif section_info_type == 'regular':
+                    awake_idx = labels.index('awake oddball')
+                    recovery_idx = labels.index('recovery oddball')
+                
                 x1 = awake_idx + 1
                 x2 = recovery_idx + 1
                 y_bar_max = np.max(box_data_max[awake_idx:recovery_idx + 1])
@@ -624,13 +798,29 @@ def plot_section_stability_boxes(cfg, agent, session_lists, delase_results, top_
                 tick_length = offset * 0.3
 
 
-                awake_vals = [section_means[monkey][dose][session]['awake oddball'] 
-                              for session in session_lists[monkey][dose]]
-                unconscious_vals = [section_means[monkey][dose][session]['recovery oddball']
-                                    for session in session_lists[monkey][dose]]
+                if section_info_type == 'plot':
+                    both_present = [session for session in session_lists[monkey][dose] if 'Awake' in section_means[monkey][dose][session] and section_to_compare in section_means[monkey][dose][session]]
+                    awake_vals = [section_means[monkey][dose][session]['Awake'] for session in both_present]
+                    comparison_vals = [section_means[monkey][dose][session][section_to_compare] for session in both_present]
+                elif section_info_type == 'regular':
+                    both_present = [session for session in session_lists[monkey][dose] if 'awake oddball' in section_means[monkey][dose][session] and 'recovery oddball' in section_means[monkey][dose][session]]
+                    awake_vals = [section_means[monkey][dose][session]['awake oddball'] for session in both_present]
+                    comparison_vals = [section_means[monkey][dose][session]['recovery oddball'] for session in both_present]
                 
-                stat, p_val = wilcoxon(unconscious_vals, awake_vals)
-                mean_diff = np.mean(unconscious_vals) - np.mean(awake_vals)
+                stat, p_val = wilcoxon(comparison_vals, awake_vals, alternative='less')
+                mean_diff = np.mean(comparison_vals) - np.mean(awake_vals)
+                print(f"{agent} {dose} recovery-awake: {p_val}")
+
+                # Determine significance stars based on the p-value
+                if p_val < 0.001:
+                    stars = '***'
+                elif p_val < 0.01:
+                    stars = '**' 
+                elif p_val < 0.05:
+                    stars = '*'
+                else:
+                    stars = 'ns'
+
                 if mean_diff > 0:
                     y_bar = y_bar_max + offset
                     ax.plot([x1, x2], [y_bar, y_bar], 'k-')
@@ -680,12 +870,17 @@ def plot_section_stability_boxes(cfg, agent, session_lists, delase_results, top_
         plt.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
     else:
         plt.show()
+    
+    return section_means
 
 
-def plot_sensory_responses_etdc(agent, curve_colors, sensory_responses, leadup, response, dt=0.001, n_delays=1, delay_interval=1, plot_legend=False, save_path=None, dims=1, use_mean=False, min_time=None, max_time=None):
+def plot_sensory_responses_etdc(agent, curve_colors, epoch_colors, sensory_responses, leadup, response, dt=0.001, n_delays=1, delay_interval=1, plot_legend=False, save_path=None, dims=1, use_mean=False, min_time=None, max_time=None):
     if use_mean and dims > 1:
         raise ValueError('use_mean is not supported for dims > 1')
     responses_etdc = get_responses_etdc(sensory_responses, n_delays, delay_interval, use_mean)
+    # Utilities for creating zoomed insets when needed
+    # add_inset = agent.lower() in ['ketamine', 'dexmedetomidine']
+    add_inset = False
     time_vals = np.arange(-leadup + (n_delays - 1)*delay_interval, response)*dt
     # raise ValueError(time_vals)
 
@@ -702,8 +897,13 @@ def plot_sensory_responses_etdc(agent, curve_colors, sensory_responses, leadup, 
         n_plots = len(responses_etdc[list(responses_etdc.keys())[0]].keys())
         fig, axs = plt.subplots(n_plots, 2, figsize=(4.2, 1.5*n_plots))
 
+
+    plot_return_data = {}
+
     for monkey in responses_etdc.keys():
+        plot_return_data[monkey] = {}
         for dose in responses_etdc[monkey].keys():
+            plot_return_data[monkey][dose] = {}
             if agent == 'propofol':
                 if monkey == 'Mary':
                     ax_idx = 0
@@ -726,8 +926,19 @@ def plot_sensory_responses_etdc(agent, curve_colors, sensory_responses, leadup, 
                     mean_trajectory = responses_etdc[monkey][dose][section].mean(axis=0)[:, :dims]
                     sem_trajectory = responses_etdc[monkey][dose][section].std(axis=0)[:, :dims] / np.sqrt(responses_etdc[monkey][dose][section].shape[0])
                 
-                color = 'green' if 'awake' in section else 'orange' if 'recovery' in section else 'purple'
+                plot_return_data[monkey][dose][section] = {
+                    'mean_trajectory': mean_trajectory,
+                    'sem_trajectory': sem_trajectory,
+                }
                 
+                # color = 'green' if 'awake' in section else 'orange' if 'recovery' in section else 'purple'
+                if 'awake' in section:
+                    color = epoch_colors['awake']
+                elif 'recovery' in section:
+                    color = epoch_colors['emergence']
+                else:
+                    color = epoch_colors['anesthesia']
+
                 # Plot individual trajectories
                 for i in range(responses_etdc[monkey][dose][section].shape[0]):
                     if dims == 1:
@@ -764,12 +975,51 @@ def plot_sensory_responses_etdc(agent, curve_colors, sensory_responses, leadup, 
                 axs[ax_idx].set_ylabel('Mean LFP (mV)')
             # axs[ax_idx].legend(['Awake', 'Unconscious'], loc='upper right')
             axs[ax_idx].grid(True, alpha=0.3)
+            # --------------------------------------------------
+            # Optional zoomed inset: show first 250 ms in detail
+            # --------------------------------------------------
+            if add_inset:
+                ax_main = axs[ax_idx]
+                # Create a small inset in the upper-right corner of the main axis
+                inset_ax = inset_axes(ax_main, width="40%", height="40%", loc='upper right')
+                inset_ax.set_xlim(0, 0.25)
+                # We'll set the y-limits after plotting so they reflect just the zoom-window values
+                local_min = np.inf
+                local_max = -np.inf
+ 
+                if dims == 1:
+                    zoom_inds = np.where((time_vals >= 0) & (time_vals <= 0.25))[0]
+                    for sec in responses_etdc[monkey][dose].keys():
+                        print(sec)
+                        col = 'green' if 'awake' in sec else 'orange' if 'recovery' in sec else 'purple'
+                        mt = plot_return_data[monkey][dose][sec]['mean_trajectory']
+                        se = plot_return_data[monkey][dose][sec]['sem_trajectory']
+                        inset_ax.plot(time_vals[zoom_inds], mt[zoom_inds], color=col)
+                        inset_ax.fill_between(time_vals[zoom_inds],
+                                             mt[zoom_inds] - se[zoom_inds],
+                                             mt[zoom_inds] + se[zoom_inds],
+                                             color=col, alpha=0.2)
+                        # Update local y-range based on mean ± SEM
+                        cur_min = np.min(mt[zoom_inds] - se[zoom_inds])
+                        cur_max = np.max(mt[zoom_inds] + se[zoom_inds])
+                        local_min = min(local_min, cur_min)
+                        local_max = max(local_max, cur_max)
+
+                # Apply the data-based y-limits with a small margin
+                if np.isfinite(local_min) and np.isfinite(local_max):
+                    rng = local_max - local_min
+                    margin = rng * 0.05 if rng > 0 else 0.01
+                    inset_ax.set_ylim(local_min - margin, local_max + margin)
+
+                # Aesthetics for inset
+                inset_ax.tick_params(axis='both', which='major', labelsize=6)
+                inset_ax.grid(True, alpha=0.2)
     # if plot_legend is True, add one green line (awake) and one purple line (unconscious)
     if plot_legend:
         # Create empty lines for legend
-        line1, = plt.plot([], [], color='green', label='awake', visible=True)
-        line2, = plt.plot([], [], color='orange', label='recovery', visible=True)
-        line3, = plt.plot([], [], color='purple', label='anesthesia', visible=True)
+        line1, = plt.plot([], [], color=epoch_colors['awake'], label='Awake', visible=True)
+        line2, = plt.plot([], [], color=epoch_colors['anesthesia'], label='Anesthesia', visible=True)
+        line3, = plt.plot([], [], color=epoch_colors['emergence'], label='Emergence', visible=True)
         
         # Add legend centered below all subplots
         fig.legend(handles=[line1, line2, line3], loc='center', bbox_to_anchor=(0.5, 0), ncol=3)
@@ -781,8 +1031,9 @@ def plot_sensory_responses_etdc(agent, curve_colors, sensory_responses, leadup, 
         plt.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
     else:
         plt.show()
+    return plot_return_data
 
-def plot_sensory_responses_acf(agent, curve_colors, sensory_responses, leadup, response, dt=0.001, n_delays=1, delay_interval=1, plot_legend=False, save_path=None, dims=1, method='grouped', use_mean=False, n_lags=50, n_ac_pts=None, verbose=False, data_save_dir=None):
+def plot_sensory_responses_acf(agent, curve_colors, epoch_colors, sensory_responses, leadup, response, dt=0.001, n_delays=1, delay_interval=1, plot_legend=False, save_path=None, dims=1, method='grouped', use_mean=False, n_lags=50, n_ac_pts=None, verbose=False, data_save_dir=None):
     responses_acf = get_responses_acf(sensory_responses, agent, response, n_delays, delay_interval, method, use_mean, n_lags, n_ac_pts, verbose, data_save_dir)
     time_vals = np.arange(0, n_lags*dt + dt/2, dt)
     
@@ -792,9 +1043,14 @@ def plot_sensory_responses_acf(agent, curve_colors, sensory_responses, leadup, r
     else:
         n_plots = len(responses_acf[list(responses_acf.keys())[0]].keys())
         fig, axs = plt.subplots(n_plots, 2, figsize=(4.2, 1.5*n_plots))
+    
+    plot_return_data = {}
 
     for monkey in responses_acf.keys():
+        plot_return_data[monkey] = {}
         for dose in responses_acf[monkey].keys():
+            plot_return_data[monkey][dose] = {}
+            
             if agent == 'propofol':
                 if monkey == 'Mary':
                     ax_idx = 0
@@ -813,13 +1069,16 @@ def plot_sensory_responses_acf(agent, curve_colors, sensory_responses, leadup, r
                 if responses_acf[monkey][dose][section] is not None:    
                     mean_trajectory = responses_acf[monkey][dose][section].mean(axis=0)
                     sem_trajectory = responses_acf[monkey][dose][section].std(axis=0) / np.sqrt(responses_acf[monkey][dose][section].shape[0])
-
+                    plot_return_data[monkey][dose][section] = {
+                        'mean_trajectory': mean_trajectory,
+                        'sem_trajectory': sem_trajectory,
+                    }
                     if 'awake' in section:
-                        color = 'green'
+                        color = epoch_colors['awake']
                     elif 'recovery' in section:
-                        color = 'orange'
+                        color = epoch_colors['emergence']
                     else:
-                        color = 'purple'
+                        color = epoch_colors['anesthesia']
                     
                 
                     axs[ax_idx].plot(time_vals, mean_trajectory, color=color)
@@ -848,7 +1107,7 @@ def plot_sensory_responses_acf(agent, curve_colors, sensory_responses, leadup, r
                     _, pval = wilcoxon(awake_data[:, t], unconscious_data[:, t])
                     if pval < 0.05:
                         # Place a purple star at the bottom
-                        axs[ax_idx].plot(time_vals[t], purple_star_y, marker='*', color='purple', markersize=2, alpha=0.5)
+                        axs[ax_idx].plot(time_vals[t], purple_star_y, marker='*', color=epoch_colors['anesthesia'], markersize=2, alpha=0.5)
 
             # 2) Recovery vs. Awake
             if (awake_data is not None) and (recovery_data is not None):
@@ -857,7 +1116,7 @@ def plot_sensory_responses_acf(agent, curve_colors, sensory_responses, leadup, r
                     _, pval = wilcoxon(awake_data[:, t], recovery_data[:, t])
                     if pval < 0.05:
                         # Place an orange star at the bottom (slightly above purple star)
-                        axs[ax_idx].plot(time_vals[t], orange_star_y, marker='*', color='orange', markersize=2, alpha=0.5)
+                        axs[ax_idx].plot(time_vals[t], orange_star_y, marker='*', color=epoch_colors['emergence'], markersize=2, alpha=0.5)
             # --------------------------------------------------
 
             axs[ax_idx].set_title(f'{monkey_titles[monkey]}' + ('\n' + dose + ' dose' if n_plots > 1 else ''))
@@ -867,9 +1126,10 @@ def plot_sensory_responses_acf(agent, curve_colors, sensory_responses, leadup, r
         
         if plot_legend:
             # Create empty lines for legend
-            line1, = plt.plot([], [], color='green', label='awake', visible=True)
-            line2, = plt.plot([], [], color='orange', label='recovery', visible=True)
-            line3, = plt.plot([], [], color='purple', label='unconscious', visible=True)
+            line1, = plt.plot([], [], color=epoch_colors['awake'], label='Awake', visible=True)
+            line2, = plt.plot([], [], color=epoch_colors['anesthesia'], label='Anesthesia', visible=True)
+            line3, = plt.plot([], [], color=epoch_colors['emergence'], label='Emergence', visible=True)
+            
             
             # Add legend centered below all subplots
             fig.legend(handles=[line1, line2, line3], loc='center', bbox_to_anchor=(0.5, 0), ncol=3)
@@ -881,16 +1141,17 @@ def plot_sensory_responses_acf(agent, curve_colors, sensory_responses, leadup, r
         plt.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
     else:
         plt.show()
+    return plot_return_data
 
 def plot_power_analysis(plot_info, data_class, agent, curve_colors, save_path=None):
     # Set up the plot
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(5, 2), sharey='row')
     axes = [ax1, ax2]
     monkey_titles = {
-        'Mary': 'NHP1',
-        'MrJones': 'NHP2',
-        'SPOCK': 'NHP3',
-        'PEDRI': 'NHP4'
+        'Mary': 'NHP 1',
+        'MrJones': 'NHP 2',
+        'SPOCK': 'NHP 3',
+        'PEDRI': 'NHP 4'
     }
     bands = ['delta', 'theta', 'alpha', 'beta', 'gamma']
     x = np.arange(len(bands))
@@ -939,7 +1200,10 @@ def plot_power_analysis(plot_info, data_class, agent, curve_colors, save_path=No
             for dose_idx, dose in enumerate(doses):
                 data = data_dict[monkey][dose][band]
                 # Perform one-sample t-test against 0
-                t_stat, p_val = stats.ttest_1samp(data, 0)
+                # t_stat, p_val = stats.ttest_1samp(data, 0)
+                stat, p_val = wilcoxon(data) # test against 0
+
+                print(f"{agent} {monkey} {dose} {band}: p-val = {p_val}")
                 
                 # Determine number of stars based on p-value
                 if p_val < 0.001:
@@ -956,6 +1220,18 @@ def plot_power_analysis(plot_info, data_class, agent, curve_colors, save_path=No
                 y_pos = np.mean(data)
                 y_pos = (y_pos + (np.std(data) / np.sqrt(len(data)))) if y_pos >= 0 else (y_pos - (np.std(data) / np.sqrt(len(data))))  # Add SEM to position stars above error bars
                 offset = 0.02 if y_pos >= 0 else -0.12  # Offset from bar
+                if agent == 'propofol':
+                    if band in ['beta', 'gamma']:
+                        if y_pos >= 0:
+                            offset = 0.04
+                        else:
+                            offset = -0.13
+                elif agent == 'dexmedetomidine':
+                    if band in ['beta', 'gamma']:
+                        if y_pos >= 0:
+                            offset = 0.04
+                        else:
+                            offset = -0.16
                 ax.text(x_pos, y_pos + offset, stars, ha='center', va='bottom')
             
         # Customize the plot

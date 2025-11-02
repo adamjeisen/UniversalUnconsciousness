@@ -40,11 +40,25 @@ def main(cfg):
     # session_list = [session for session in session_list if 'Dex' not in session]
     # session_list = [session for session in session_list if 'Dex' in session]
 
-    areas = ['all']
+    # get only high dose sessions
+    if 'propofol' not in cfg.params.data_class:
+        high_dose_session_list = []
+        for session in session_list:
+            if 'propofol' in cfg.params.data_class:
+                session_file = h5py.File(os.path.join(cfg.params.all_data_dir, 'anesthesia', 'mat', cfg.params.data_class, session + '.mat'), 'r')
+            else:
+                session_file = h5py.File(os.path.join(cfg.params.all_data_dir, cfg.params.data_class, 'mat', session + '.mat'), 'r')
+            dose = session_file['sessionInfo']['dose'][0, 0]
+            if dose > 9:
+                high_dose_session_list.append(session)
+        session_list = high_dose_session_list
 
-    # session_list = [session_list[0]]
+    # areas = ['all']
+    areas = cfg.params.areas
 
+    # session_list = session_list[:1]
     log.info(f"Session list: {session_list}")
+
 
     # --------------------------------------------------------------------------
     # Find noisy data
@@ -77,12 +91,16 @@ def main(cfg):
         log.info("-"*20)
         
         all_indices_to_run = collect_grid_indices_to_run(cfg, session_list, areas, noise_filter_info, pca_chosen, log=log, verbose=True)
+
         # --------------------------------------------------------------------------
         # Running grid search
         # --------------------------------------------------------------------------
         if os.path.exists('/om2/user/eisenaj'):
             os.chdir('/om2/user/eisenaj/code/UniversalUnconsciousness/UniversalUnconsciousness')
-            batch_size = 250
+            # batch_size = 250
+            # batch_size = 25
+            batch_size = 200
+            # batch_size = 10
         else:
             os.chdir('/home/eisenaj/code/UniversalUnconsciousness/UniversalUnconsciousness')
             batch_size = 25
@@ -110,7 +128,7 @@ def main(cfg):
                         os.system(f"HYDRA_FULL_ERROR=1 python DeLASE_analysis/run_grid_search.py -m ++params.session={session} ++params.area={area} ++params.pca_dims={int(pca_chosen[session][area])} ++params.run_index={','.join([str(i) for i in all_indices_to_run[session][area][batch_start:batch_end]])}")
                     else:
                         os.system(f"HYDRA_FULL_ERROR=1 python DeLASE_analysis/run_grid_search.py -m ++params.session={session} ++params.area={area} ++params.run_index={','.join([str(i) for i in all_indices_to_run[session][area][batch_start:batch_end]])}")
-                    iterator.update()   
+                    iterator.update()
         iterator.close()
 
         loop_num += 1

@@ -14,23 +14,31 @@ session: null
 area: null
 run_index: 0
 random_state: 42
+areas: ['all']
+# areas: ['all', 'vlPFC', 'FEF', '7b', 'CPB'] # propofol
+# areas: ['vlPFC-L', 'vlPFC-R', 'dlPFC-L', 'dlPFC-R'] # anesthesiaLvrOdd
 
 testing: False
 
-window: 15
+window: 5
 T_pred: null
 
 # grid search
 # grid_set: grid_set4 # grid set name # ANESTHESIALVRODD
-grid_set: grid_set5 # grid set name # PROPOFOLPUFFTONE
+# grid_set: grid_set5 # grid set name # PROPOFOLPUFFTONE
+grid_set: grid_set6 # grid set name # ALL AND PROPOFOL PUFF TONE SINGLES
+# grid_set: grid_set7 # grid set name # ANESTHESIA LVRODD SINGLES
 num_windows_per_section: 4
 group_ranks: True # group ranks so that the same CPU is used for all ranks
 stat_to_use: aic
 sections_to_use: ['all_sections']
 # sections_to_use: ['awake oddball', 'unconscious oddball', 'recovery oddball']
+compute_delase_on_grid: False
+# compute_delase_on_grid: True
 
 # full analysis
-stride: 15
+# stride: 15
+stride: 120
 n_delays: null
 rank: null
 
@@ -41,7 +49,7 @@ max_unstable_freq: 125
 # filtering noise windows
 noise_filter: True
 wake_amplitude_thresh: 1
-anesthesia_amplitude_thresh: 2
+anesthesia_amplitude_thresh: 1
 electrode_num_thresh: 1
 
 # preprocessing

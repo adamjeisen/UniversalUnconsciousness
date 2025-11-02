@@ -4,13 +4,17 @@ defaults:
 
 hydra:
   launcher:
-    cpus_per_task: 6
+    # cpus_per_task: 6
+    cpus_per_task: 2
     nodes: 1
     # mem_gb: 8
     mem_per_cpu: 2GB
     additional_parameters:
       mail-user: eisenaj@mit.edu
-    timeout_min: 15
+    # timeout_min: 15
+    timeout_min: 45
     gres: gpu:1
     # partition: ou_bcs_low
     partition: normal
+    # partition: millerlab
+    # partition: use-everything

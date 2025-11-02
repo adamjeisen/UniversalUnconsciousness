@@ -66,8 +66,8 @@ def compute_delase(cfg, session, run_params):
     result = {} | run_params
     result['stability_params'] = delase.stability_params.cpu().numpy()
     result['stability_freqs'] = delase.stability_freqs.cpu().numpy()
-    if cfg.params.area == 'all':
-        result['Js'] = delase.Js.cpu().numpy()
+    # if cfg.params.area == 'all':
+    #     result['Js'] = delase.Js.cpu().numpy()
     
     log.info(f"DeLASE fit in {time.time() - start} seconds")
     
@@ -161,7 +161,7 @@ def main(cfg):
     
     run_params = delase_run_list[cfg.params.area][cfg.params.run_index]
 
-    noise_filter_folder = f"NOISE_FILTERED_{cfg.params.window}_{cfg.params.wake_amplitude_thresh}_{cfg.params.anesthesia_amplitude_thresh}_{cfg.params.electrode_num_thresh}" if cfg.params.noise_filter else "NO_NOISE_FILTER"
+    noise_filter_folder = f"NOISE_FILTERED_{cfg.params.window}_{cfg.params.wake_amplitude_thresh}_{cfg.params.anesthesia_amplitude_thresh}_{cfg.params.electrode_num_thresh}_stride_{cfg.params.stride}" if cfg.params.noise_filter else "NO_NOISE_FILTER"
     normed_folder = 'NOT_NORMED' if not cfg.params.normed else 'NORMED'
     filter_folder = f"[{cfg.params.high_pass},{cfg.params.low_pass}]" if cfg.params.low_pass is not None or cfg.params.high_pass is not None else 'NO_FILTER'
     grid_folder = f"GRID_RESULTS_n_delays_{cfg.params.n_delays}_rank_{cfg.params.rank}"

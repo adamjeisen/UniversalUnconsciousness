@@ -236,20 +236,31 @@ def combine_grid_results(results_dict):
     
 #     return chosen_params
 
-def get_section_info(session, all_data_dir, data_class):
+def get_section_info(session, all_data_dir, data_class, section_info_type='regular'):
     if 'propofol' in data_class:
-        section_info = [('awake', [-15, 0]), ('induction', [0, 15]), ('loading dose', [15, 30]), ('maintenance dose', [30, 60]), ('recovery', [60, 75])]
+        if section_info_type == 'regular':
+            section_info = [('awake', [-15, 0]), ('induction', [0, 15]), ('loading dose', [15, 30]), ('maintenance dose', [30, 60]), ('recovery', [60, 75])]
+        elif section_info_type == 'plot':
+            section_info = [('Awake', [-15, 0]), ('Induction', [0, 15]), ('Anesthesia', [15, 60]), ('Late Anesthesia', [30, 60]), ('Emergence', [60, 75])]
         section_info_extended = [('awake', [-15, 0]), ('induction', [0, 15]), ('unconscious', [15, 60]), ('late recovery', [68, 75]), ('recovery', [60, 75]), ('loading dose', [15, 30]), ('maintenance dose', [45, 60]), ('early recovery', [60, 68])]
 
         section_colors = {
             'awake': 'limegreen',
+            'Awake': 'limegreen',
             'unconscious': 'plum',
             'recovery': 'orange',
+            'Emergence': 'orange',
             'loading dose': '#D65CD4',
+            'early unconscious': '#D65CD4',
+            'late unconscious': '#E28DE0',
             'maintenance dose': '#E28DE0',
             'early recovery': 'chocolate',
             'late recovery': '#FFBF47',
-            'induction': '#61C9A8'
+            'induction': '#61C9A8',
+            'Induction': '#61C9A8',
+            'Anesthesia': '#D65CD4',
+            'Late Anesthesia': '#E28DE0',
+            'Emergence': 'orange'
         }
         os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
         session_file = h5py.File(os.path.join(all_data_dir, 'anesthesia', 'mat', data_class, session + '.mat'), 'r')
@@ -292,20 +303,32 @@ def get_section_info(session, all_data_dir, data_class):
         #                 ('late anesthesia', [(oddball_windows[2][0] - oddball_windows[1][1])/2, oddball_windows[2][1]]), 
         #                 ('recovery oddball', oddball_windows[2])
         #             ]
-        section_info = [
-                        ('awake lever1', [-infusion_start/60, oddball_windows[0][0]]),
-                        ('awake oddball', oddball_windows[0]),
-                        ('awake lever2', [oddball_windows[0][1], 0]), 
-                        ('induction', [0, oddball_windows[1][0]]), 
-                        ('unconscious oddball', oddball_windows[1]), 
-                        ('early unconscious', [oddball_windows[1][1], 45]), 
-                        # ('early unconscious', [oddball_windows[1][1], (oddball_windows[2][0] - oddball_windows[1][1])/2]), 
-                        # ('late unconscious', [(oddball_windows[2][0] - oddball_windows[1][1])/2, oddball_windows[2][1]]), 
-                        ('late unconscious', [45, oddball_windows[2][1]]),
-                        ('recovery oddball', oddball_windows[2])
-                    ]
+        if section_info_type == 'regular':
+            section_info = [
+                            ('awake lever1', [-infusion_start/60, oddball_windows[0][0]]),
+                            ('awake oddball', oddball_windows[0]),
+                            ('awake lever2', [oddball_windows[0][1], 0]), 
+                            ('induction', [0, oddball_windows[1][0]]), 
+                            ('unconscious oddball', oddball_windows[1]), 
+                            ('early unconscious', [oddball_windows[1][1], 45]), 
+                            # ('early unconscious', [oddball_windows[1][1], (oddball_windows[2][0] - oddball_windows[1][1])/2]), 
+                            # ('late unconscious', [(oddball_windows[2][0] - oddball_windows[1][1])/2, oddball_windows[2][1]]), 
+                            ('late unconscious', [45, oddball_windows[2][1]]),
+                            ('recovery oddball', oddball_windows[2])
+                        ]
+        elif section_info_type == 'plot':
+            section_info = [
+                            ('Awake', [-infusion_start/60, 0]),
+                            ('Induction', [0, oddball_windows[1][0]]), 
+                            ('Anesthesia', [oddball_windows[1][0], 45]), 
+                            # ('early unconscious', [oddball_windows[1][1], (oddball_windows[2][0] - oddball_windows[1][1])/2]), 
+                            # ('late unconscious', [(oddball_windows[2][0] - oddball_windows[1][1])/2, oddball_windows[2][1]]), 
+                            ('Late Anesthesia', [45, oddball_windows[2][1]]),
+                            ('Emergence', oddball_windows[2])
+                        ]
         section_info_extended = section_info
         section_colors = {
+            'Awake': 'limegreen',
             'awake lever1': 'limegreen',
             'awake lever2': 'limegreen',
             'awake oddball': 'forestgreen',
@@ -313,7 +336,11 @@ def get_section_info(session, all_data_dir, data_class):
             'recovery oddball': 'orange',
             'early unconscious': '#D65CD4',
             'late unconscious': '#E28DE0',
-            'induction': '#61C9A8'
+            'Anesthesia': '#D65CD4',
+            'Late Anesthesia': '#E28DE0',
+            'induction': '#61C9A8',
+            'Induction': '#61C9A8',
+            'Emergence': 'orange'
         }
         
     return section_info, section_info_extended, section_colors, infusion_start
@@ -363,10 +390,10 @@ def get_grid_search_window_ts(cfg, session, valid_window_starts=None, window_rad
     return grid_search_window_start_ts
 
 def get_grid_search_run_list(cfg, session, grid_search_window_start_ts=None, bad_electrodes=[], verbose=False, make_new=False):
+    # make_new = True
     grid_search_run_list_dir = os.path.join(cfg.params.grid_search_results_dir, cfg.params.data_class, 'grid_search_run_lists')
     os.makedirs(grid_search_run_list_dir, exist_ok=True)
     grid_search_run_list_file = os.path.join(grid_search_run_list_dir, f"{session}_{cfg.params.grid_set}_window_{cfg.params.window}")
-    
     if os.path.exists(grid_search_run_list_file) and not make_new:
         if verbose:
             print(f"list exists! loading {grid_search_run_list_file}...")
@@ -390,12 +417,17 @@ def get_grid_search_run_list(cfg, session, grid_search_window_start_ts=None, bad
         if len(electrode_areas) > session_file['lfp'].shape[0]:
             electrode_areas = np.delete(electrode_areas, 60)
         
+        if cfg.params.data_class == 'anesthesiaLvrOdd':
+            hemisphere = convert_h5_string_array(session_file, session_file['electrodeInfo']['hemisphere'])
+            electrode_areas = np.array([f"{area}-{h[0].upper()}" for area, h in zip(electrode_areas, hemisphere)])
+        
         areas = np.unique(electrode_areas)
         areas = np.concatenate((areas, ('all',)))
         if np.sum(['-L' in area for area in areas]) > 0:
             areas_bilateral = np.unique([area.split('-')[0] for area in areas if area!='all' and ('-L' in area or '-R' in area)])
             areas = np.concatenate((areas, areas_bilateral))
             areas = np.concatenate((areas, ['-L', '-R']))
+
         dt = session_file['lfpSchema']['smpInterval'][0, 0]
 
         grid_search_run_list = {}
@@ -461,7 +493,7 @@ def get_grid_search_results(cfg, session_list, areas, num_sections, pca_chosen=N
             print("-"*20)
             print(f"SESSION = {session}")
             print("-"*20)
-        noise_filter_folder = f"NOISE_FILTERED_{cfg.params.window}_{cfg.params.wake_amplitude_thresh}_{cfg.params.anesthesia_amplitude_thresh}_{cfg.params.electrode_num_thresh}" if cfg.params.noise_filter else "NO_NOISE_FILTER"
+        noise_filter_folder = f"NOISE_FILTERED_{cfg.params.window}_{cfg.params.wake_amplitude_thresh}_{cfg.params.anesthesia_amplitude_thresh}_{cfg.params.electrode_num_thresh}_stride_{cfg.params.stride}" if cfg.params.noise_filter else "NO_NOISE_FILTER"
         normed_folder = 'NOT_NORMED' if not cfg.params.normed else 'NORMED'
         filter_folder = f"[{cfg.params.high_pass},{cfg.params.low_pass}]" if cfg.params.low_pass is not None or cfg.params.high_pass is not None else 'NO_FILTER'
 
@@ -477,7 +509,7 @@ def get_grid_search_results(cfg, session_list, areas, num_sections, pca_chosen=N
             save_dir = os.path.join(cfg.params.grid_search_results_dir, cfg.params.data_class, 'grid_search_results', session, noise_filter_folder, normed_folder, f"SUBSAMPLE_{cfg.params.subsample}", filter_folder, f"WINDOW_{cfg.params.window}", cfg.params.grid_set, area, pca_folder)
             
             if verbose:
-                print(f"Loading data for {session} - {area}")
+                print(f"Loading data for {session} - {area} from {save_dir}")
             window_starts = set()
             for f in tqdm(os.listdir(save_dir), disable=not verbose):
                 ret = pd.read_pickle(os.path.join(save_dir, f))
@@ -520,23 +552,44 @@ def get_delase_run_list(cfg, session, valid_window_starts=None, bad_electrodes=[
         # GET SECTION AND SESSION INFO
         section_info, section_info_extended, section_colors, infusion_start = get_section_info(session, cfg.params.all_data_dir, cfg.params.data_class)
 
-        os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
-        variables = ['electrodeInfo', 'lfpSchema', 'sessionInfo']
-        session_vars, T, N, dt = load_session_data(session, cfg.params.all_data_dir, variables, data_class=cfg.params.data_class, verbose=False)
-        electrode_info, lfp_schema, session_info = session_vars['electrodeInfo'], session_vars['lfpSchema'], session_vars['sessionInfo']
-        areas = np.unique(electrode_info['area'])
+        # os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
+        # variables = ['electrodeInfo', 'lfpSchema', 'sessionInfo']
+        # session_vars, T, N, dt = load_session_data(session, cfg.params.all_data_dir, variables, data_class=cfg.params.data_class, verbose=False)
+        # electrode_info, lfp_schema, session_info = session_vars['electrodeInfo'], session_vars['lfpSchema'], session_vars['sessionInfo']
+        # areas = np.unique(electrode_info['area'])
+        # areas = np.concatenate((areas, ('all',)))
+        # if np.sum(['-L' in area for area in areas]) > 0:
+        #     areas_bilateral = np.unique([area.split('-')[0] for area in areas if area!='all' and ('-L' in area or '-R' in area)])
+        #     areas = np.concatenate((areas, areas_bilateral))
+        #     areas = np.concatenate((areas, ['-L', '-R']))
+
+        # if 'propofol' in cfg.params.data_class:
+        #     drug_start = session_info['drugStart'][0]
+        # elif 'lever' in cfg.params.data_class or 'Lvr' in cfg.params.data_class:
+        #     drug_start = session_info['infusionStart']
+
+        # directory_path = os.path.join(cfg.params.all_data_dir, cfg.params.data_class, session + '_lfp_chunked_20s', 'directory')
+
+        if 'propofol' in cfg.params.data_class:
+            session_file = h5py.File(os.path.join(cfg.params.all_data_dir, 'anesthesia', 'mat', cfg.params.data_class, session + '.mat'), 'r')
+        else:
+            session_file = h5py.File(os.path.join(cfg.params.all_data_dir, cfg.params.data_class, 'mat', session + '.mat'), 'r')
+        electrode_areas = convert_h5_string_array(session_file, session_file['electrodeInfo']['area'])
+        if len(electrode_areas) > session_file['lfp'].shape[0]:
+            electrode_areas = np.delete(electrode_areas, 60)
+        
+        if cfg.params.data_class == 'anesthesiaLvrOdd':
+            hemisphere = convert_h5_string_array(session_file, session_file['electrodeInfo']['hemisphere'])
+            electrode_areas = np.array([f"{area}-{h[0].upper()}" for area, h in zip(electrode_areas, hemisphere)])
+        
+        areas = np.unique(electrode_areas)
         areas = np.concatenate((areas, ('all',)))
         if np.sum(['-L' in area for area in areas]) > 0:
             areas_bilateral = np.unique([area.split('-')[0] for area in areas if area!='all' and ('-L' in area or '-R' in area)])
             areas = np.concatenate((areas, areas_bilateral))
             areas = np.concatenate((areas, ['-L', '-R']))
 
-        if 'propofol' in cfg.params.data_class:
-            drug_start = session_info['drugStart'][0]
-        elif 'lever' in cfg.params.data_class or 'Lvr' in cfg.params.data_class:
-            drug_start = session_info['infusionStart']
-
-        directory_path = os.path.join(cfg.params.all_data_dir, cfg.params.data_class, session + '_lfp_chunked_20s', 'directory')
+        dt = session_file['lfpSchema']['smpInterval'][0, 0]
 
         delase_run_list = {}
 
@@ -554,10 +607,10 @@ def get_delase_run_list(cfg, session, valid_window_starts=None, bad_electrodes=[
                 T_pred = cfg.params.T_pred
         
             if area == 'all':
-                unit_indices = np.arange(len(electrode_info['area']))
+                unit_indices = np.arange(len(electrode_areas))
             else:
                 # unit_indices = np.where(electrode_info['area'] == area)[0]
-                unit_indices = np.where([area in area_entry for area_entry in electrode_info['area']])[0]
+                unit_indices = np.where([area in area_entry for area_entry in electrode_areas])[0]
             unit_indices = np.array([idx for idx in unit_indices if idx not in bad_electrodes])
 
             if 'all_sections' in cfg.params.sections_to_use:
@@ -602,7 +655,6 @@ def get_delase_run_list(cfg, session, valid_window_starts=None, bad_electrodes=[
                     test_window_start=window_start + window,
                     test_window_end=window_start + window + T_pred,
                     dimension_inds=unit_indices,
-                    directory_path=directory_path,
                     stride=stride,
                     i=i,
                     dt=dt,
@@ -623,7 +675,7 @@ def get_delase_results(cfg, session_list, areas, grid_params_to_use, pca_chosen=
             print("-"*20)
             print(f"SESSION = {session}")
             print("-"*20)
-        noise_filter_folder = f"NOISE_FILTERED_{cfg.params.window}_{cfg.params.wake_amplitude_thresh}_{cfg.params.anesthesia_amplitude_thresh}_{cfg.params.electrode_num_thresh}" if cfg.params.noise_filter else "NO_NOISE_FILTER"
+        noise_filter_folder = f"NOISE_FILTERED_{cfg.params.window}_{cfg.params.wake_amplitude_thresh}_{cfg.params.anesthesia_amplitude_thresh}_{cfg.params.electrode_num_thresh}_stride_{cfg.params.stride}" if cfg.params.noise_filter else "NO_NOISE_FILTER"
         normed_folder = 'NOT_NORMED' if not cfg.params.normed else 'NORMED'
         filter_folder = f"[{cfg.params.high_pass},{cfg.params.low_pass}]" if cfg.params.low_pass is not None or cfg.params.high_pass is not None else 'NO_FILTER'
 
@@ -640,7 +692,7 @@ def get_delase_results(cfg, session_list, areas, grid_params_to_use, pca_chosen=
             save_dir = os.path.join(cfg.params.delase_results_dir, cfg.params.data_class, 'delase_results', session, noise_filter_folder, normed_folder, f"SUBSAMPLE_{cfg.params.subsample}", filter_folder, f"WINDOW_{cfg.params.window}", grid_folder, f"STRIDE_{cfg.params.stride}", area, pca_folder)
             
             if verbose:
-                print(f"Loading data for {session} - {area}")
+                print(f"Loading data for {session} - {area} from {save_dir}")
             for f in tqdm(os.listdir(save_dir), disable=not verbose):
                 ret = pd.read_pickle(os.path.join(save_dir, f))
                 run_index = int(f.split('-')[1].split('.')[0])
@@ -792,61 +844,62 @@ def filter_data(data, low_pass=None, high_pass=None, dt=0.001, order=2, bidirect
 def get_drug_start(cfg, session_file):
     return session_file['sessionInfo']['drugStart'][0] if 'propofol' in cfg.params.data_class else session_file['sessionInfo']['infusionStart'][0, 0]
 
-def get_loc_roc(cfg, session_file, read_file=True):
+def get_loc_roc(cfg, session_file, read_file=True, simple=True):
     session = convert_char_array(session_file['sessionInfo']['session'])
-    save_file = os.path.join(cfg.params.results_dir, 'loc_roc_info', cfg.params.data_class, f"{session}.pkl")
-    if read_file and os.path.exists(save_file):
-        ret_dict = pd.read_pickle(save_file)
-        return ret_dict['loc'], ret_dict['roc'], ret_dict['ropap']
+    # save_file = os.path.join(cfg.params.results_dir, 'loc_roc_info', cfg.params.data_class, f"{session}.pkl")
+    # if read_file and os.path.exists(save_file):
+    #     ret_dict = pd.read_pickle(save_file)
+    #     return ret_dict['loc'], ret_dict['roc'], ret_dict['ropap']
 
     if 'propofol' in cfg.params.data_class:
         loc = session_file['sessionInfo']['eyesClose'][0, -1] 
         roc = session_file['sessionInfo']['eyesOpen'][0, -1]
         ropap = roc
 
-        os.makedirs(os.path.dirname(save_file), exist_ok=True)
-        pd.to_pickle(dict(loc=loc, roc=roc, ropap=ropap), save_file)
+        # os.makedirs(os.path.dirname(save_file), exist_ok=True)
+        # pd.to_pickle(dict(loc=loc, roc=roc, ropap=ropap), save_file)
     elif 'lever' in cfg.params.data_class or 'Lvr' in cfg.params.data_class:
-        lever_window = 60
-        stride = 0.1
-        loc_thresh = 0
-        roc_thresh = 0
-        ropap_thresh = 0.25
+        if simple:
+            drug_start = get_drug_start(cfg, session_file) # s
+            loc = drug_start
+            section_info, section_info_extended, section_colors, infusion_start = get_section_info(session, cfg.params.all_data_dir, cfg.params.data_class)
+            for section, times in section_info:
+                if section == 'recovery oddball':
+                    roc = times[0]*60 + infusion_start
+                    break
+            ropap = roc
+        else:
+            lever_window = 120
+            stride = 15
+            loc_thresh = 0.1
+            roc_thresh = 0.1
+            ropap_thresh = 0.25
 
-        trial_starts = session_file['trialInfo']['trialStart'][:,0]
-        trial_ends = session_file['trialInfo']['trialEnd'][:,0]
-        tasks = convert_h5_string_array(session_file, session_file['trialInfo']['task'])
+            trial_starts = session_file['trialInfo']['trialStart'][:,0]
+            trial_ends = session_file['trialInfo']['trialEnd'][:,0]
+            tasks = convert_h5_string_array(session_file, session_file['trialInfo']['task'])
 
-        lever_starts = trial_starts[tasks == 'lever']
-        lever_ends = trial_ends[tasks == 'lever']
-        window_starts = np.arange(0, lever_ends[-1], stride)
+            lever_starts = trial_starts[tasks == 'lever'] # s
+            lever_ends = trial_ends[tasks == 'lever'] # s
+            window_starts = np.arange(0, lever_ends[-1], stride)
 
-        drug_start = get_drug_start(cfg, session_file)
-        pct_correct = np.zeros(len(window_starts))
-        loc = int(window_starts[(window_starts >= drug_start) & (pct_correct <= loc_thresh)].min())
+            drug_start = get_drug_start(cfg, session_file) # s
+            pct_correct = np.zeros(len(window_starts))
 
-        for i, window_start in enumerate(window_starts):
-            window_end = window_start + lever_window
-            outcomes = session_file['trialInfo']['lvr_correct'][()][(lever_starts >= window_start) & (lever_ends <= window_end)]
-            if len(outcomes) > 0:
-                pct_correct[i] = outcomes.sum()/len(outcomes)
+            for i, window_start in enumerate(window_starts):
+                outcomes = session_file['trialInfo']['lvr_correct'][()][(lever_starts >= window_start - lever_window/2) & (lever_ends <= window_start + lever_window/2)]
+                if len(outcomes) > 0:
+                    pct_correct[i] = outcomes.sum()/len(outcomes)
 
-        roc = int(window_starts[(window_starts > loc + 10*60) & (pct_correct > roc_thresh)].min())
-        valid_windows = window_starts[(window_starts > loc + 10*60) & (pct_correct > ropap_thresh)]
-        ropap = int(valid_windows.min() if len(valid_windows) > 0 else window_starts[-1])
+            loc = int(window_starts[(window_starts >= drug_start) & (pct_correct <= loc_thresh)].min())
+            roc_window_starts = window_starts[(window_starts > loc + 10*60) & (pct_correct > roc_thresh)]
+            if len(roc_window_starts) > 0:
+                roc = int(roc_window_starts.min())
+            else:
+                roc = None
 
-        os.makedirs(os.path.dirname(save_file), exist_ok=True)
-        pd.to_pickle(dict(loc=loc, roc=roc, ropap=ropap), save_file)
-
-        # plt.plot((window_starts - drug_start)/60, pct_correct)
-        # plt.axvline(0, c='plum',label='Drug Start', linestyle='--')
-        # plt.axvline((loc - drug_start)/60, c='r', label='LOC', linestyle='--')
-        # plt.axvline((roc - drug_start)/60, c='g', label='ROC', linestyle='--')
-        # # plt.axvline((ropap - drug_start)/60, c='orange', label='ROPAP', linestyle='--')
-        # plt.xlabel('Time Relative to Anesthesia Start (min)')
-        # plt.ylabel('Response Probability')
-        # plt.legend()
-        # plt.show()
+            valid_windows = window_starts[(window_starts > loc + 10*60) & (pct_correct > ropap_thresh)]
+            ropap = int(valid_windows.min() if len(valid_windows) > 0 else window_starts[-1])
     
     return loc, roc, ropap
 
@@ -897,9 +950,10 @@ def find_noisy_data(cfg, session, return_all=False):
         filename = os.path.join(cfg.params.all_data_dir, cfg.params.data_class, 'mat', f"{session}.mat")
     session_file = h5py.File(filename, 'r')
 
-    loc, roc, ropap = get_loc_roc(cfg, session_file)
+    loc, roc, ropap = get_loc_roc(cfg, session_file, simple=True)
 
     window = cfg.params.window
+    stride = window if cfg.params.stride is None else cfg.params.stride
     wake_amplitude_thresh = cfg.params.wake_amplitude_thresh
     anesthesia_amplitude_thresh = cfg.params.anesthesia_amplitude_thresh
     electrode_num_thresh = cfg.params.electrode_num_thresh
@@ -907,7 +961,7 @@ def find_noisy_data(cfg, session, return_all=False):
     T = session_file['lfp'].shape[1]
     dt = session_file['lfpSchema']['smpInterval'][0, 0]
 
-    window_starts = np.arange(0, T*dt - window, window)
+    window_starts = np.arange(0, T*dt - window, stride)
     window_df = []
 
     lfp = TransposedDatasetView(session_file['lfp']).transpose()
@@ -969,16 +1023,18 @@ def log_msg(msg, log=None, verbose=False):
     elif verbose:
         print(msg)
 
-def get_noise_filter_info(cfg, session_list, log=None, verbose=False):
+def get_noise_filter_info(cfg, session_list, log=None, verbose=False, force_new=False):
     noise_filter_info = {}
     if cfg.params.noise_filter:
         os.makedirs(cfg.params.noise_filter_results_dir, exist_ok=True)
         for session in session_list:
             noise_filter_dir = os.path.join(cfg.params.noise_filter_results_dir, cfg.params.data_class)
             os.makedirs(noise_filter_dir, exist_ok=True)
-            noise_filter_file = f"{session}__window_{cfg.params.window}__wakethresh_{cfg.params.wake_amplitude_thresh}__anesthesiathresh_{cfg.params.anesthesia_amplitude_thresh}__electrodenum_{cfg.params.electrode_num_thresh}.pkl"
-            if noise_filter_file in os.listdir(noise_filter_dir):
-                # print(f"File found for session {session}: {os.path.join(noise_filter_dir, noise_filter_file)}")
+
+            noise_filter_file = f"{session}__window_{cfg.params.window}__wakethresh_{cfg.params.wake_amplitude_thresh}__anesthesiathresh_{cfg.params.anesthesia_amplitude_thresh}__electrodenum_{cfg.params.electrode_num_thresh}__stride_{cfg.params.stride}.pkl"
+            if noise_filter_file in os.listdir(noise_filter_dir) and not force_new:
+                if verbose:
+                    print(f"File found for session {session}: {os.path.join(noise_filter_dir, noise_filter_file)}")
                 noise_filter_info[session] = pd.read_pickle(os.path.join(noise_filter_dir, noise_filter_file))
             else:
                 if verbose:
@@ -1071,7 +1127,13 @@ def collect_grid_indices_to_run(cfg, session_list, areas, noise_filter_info, pca
         normed_folder = 'NOT_NORMED' if not cfg.params.normed else 'NORMED'
         filter_folder = f"[{cfg.params.high_pass},{cfg.params.low_pass}]" if cfg.params.low_pass is not None or cfg.params.high_pass is not None else 'NO_FILTER'
         grid_search_run_list = get_grid_search_run_list(cfg, session, grid_search_window_start_ts, noise_filter_info[session]['bad_electrodes'], verbose=verbose)
-        noise_filter_folder = f"NOISE_FILTERED_{cfg.params.window}_{cfg.params.wake_amplitude_thresh}_{cfg.params.anesthesia_amplitude_thresh}_{cfg.params.electrode_num_thresh}" if cfg.params.noise_filter else "NO_NOISE_FILTER"
+       
+        # print(grid_search_run_list.keys(), areas)
+        # raise Exception("Stop here")
+        # print(grid_search_run_list['CPB'])
+        # raise Exception("Stop here")
+
+        noise_filter_folder = f"NOISE_FILTERED_{cfg.params.window}_{cfg.params.wake_amplitude_thresh}_{cfg.params.anesthesia_amplitude_thresh}_{cfg.params.electrode_num_thresh}_stride_{cfg.params.stride}" if cfg.params.noise_filter else "NO_NOISE_FILTER"
     
         for area in areas:
             
@@ -1121,7 +1183,7 @@ def collect_grid_indices_to_run(cfg, session_list, areas, noise_filter_info, pca
                 # unfinished_sessions = True
     return all_indices_to_run
 
-def get_grid_params_to_use(cfg, session_list, areas, pca_chosen, log=None, verbose=False):
+def get_grid_params_to_use(cfg, session_list, areas, pca_chosen, log=None, return_results=False, verbose=False):
     section_info, _, _, _ = get_section_info(session_list[0], cfg.params.all_data_dir, cfg.params.data_class)
     grid_search_results = get_grid_search_results(cfg, session_list, areas, len(section_info), pca_chosen, verbose=verbose)
 
@@ -1139,14 +1201,16 @@ def get_grid_params_to_use(cfg, session_list, areas, pca_chosen, log=None, verbo
         grid_params_to_use[session] = {}
         for area in areas:
             grid_params_to_use[session][area] = {'n_delays': grid_search_results[session][area]['n_delays'], 'rank': grid_search_results[session][area]['rank']}
+    if return_results:
+        return grid_params_to_use, grid_search_results
     return grid_params_to_use
 
-def collect_delase_indices_to_run(cfg, session_list, areas, noise_filter_info, pca_chosen,grid_params_to_use, log=None, verbose=False):
+def collect_delase_indices_to_run(cfg, session_list, areas, noise_filter_info, pca_chosen, grid_params_to_use, log=None, verbose=False):
     all_indices_to_run = {}
     for session in tqdm(session_list, desc='Getting DeLASE Run List', disable=not verbose):
         delase_run_list = get_delase_run_list(cfg, session, valid_window_starts=noise_filter_info[session]['valid_window_starts'], bad_electrodes=noise_filter_info[session]['bad_electrodes'], verbose=verbose)
 
-        noise_filter_folder = f"NOISE_FILTERED_{cfg.params.window}_{cfg.params.wake_amplitude_thresh}_{cfg.params.anesthesia_amplitude_thresh}_{cfg.params.electrode_num_thresh}" if cfg.params.noise_filter else "NO_NOISE_FILTER"
+        noise_filter_folder = f"NOISE_FILTERED_{cfg.params.window}_{cfg.params.wake_amplitude_thresh}_{cfg.params.anesthesia_amplitude_thresh}_{cfg.params.electrode_num_thresh}_stride_{cfg.params.stride}" if cfg.params.noise_filter else "NO_NOISE_FILTER"
         normed_folder = 'NOT_NORMED' if not cfg.params.normed else 'NORMED'
         filter_folder = f"[{cfg.params.high_pass},{cfg.params.low_pass}]" if cfg.params.low_pass is not None or cfg.params.high_pass is not None else 'NO_FILTER'
         # sections_to_use_folder = 'SECTIONS_TO_USE_' + '__'.join(['_'.join(section.split(' ')) for section in cfg.params.sections_to_use])
@@ -1178,3 +1242,323 @@ def collect_delase_indices_to_run(cfg, session_list, areas, noise_filter_info, p
                     all_indices_to_run[session] = {}
                 all_indices_to_run[session][area] = indices_to_run
     return all_indices_to_run
+
+def collect_delase_hyperparam_indices_to_run(cfg, session_list, areas, noise_filter_info, pca_chosen, n_delays_vals, rank_vals, log=None, verbose=False):
+    all_indices_to_run = {}
+    for session in tqdm(session_list, desc='Getting DeLASE Hyperparam Run List', disable=not verbose):
+        delase_run_list = get_delase_run_list(cfg, session, valid_window_starts=noise_filter_info[session]['valid_window_starts'], bad_electrodes=noise_filter_info[session]['bad_electrodes'], verbose=verbose)
+
+        noise_filter_folder = f"NOISE_FILTERED_{cfg.params.window}_{cfg.params.wake_amplitude_thresh}_{cfg.params.anesthesia_amplitude_thresh}_{cfg.params.electrode_num_thresh}_stride_{cfg.params.stride}" if cfg.params.noise_filter else "NO_NOISE_FILTER"
+        normed_folder = 'NOT_NORMED' if not cfg.params.normed else 'NORMED'
+        filter_folder = f"[{cfg.params.high_pass},{cfg.params.low_pass}]" if cfg.params.low_pass is not None or cfg.params.high_pass is not None else 'NO_FILTER'
+        # sections_to_use_folder = 'SECTIONS_TO_USE_' + '__'.join(['_'.join(section.split(' ')) for section in cfg.params.sections_to_use])
+
+        for n_delays in n_delays_vals:
+            for area in areas:
+                pca_folder = "NO_PCA" if not cfg.params.pca else f"PCA_{pca_chosen[session][area]}"
+                save_dir = os.path.join(cfg.params.delase_results_dir, cfg.params.data_class, 'delase_hyperparam_results', session, noise_filter_folder, normed_folder, f"SUBSAMPLE_{cfg.params.subsample}", filter_folder, f"WINDOW_{cfg.params.window}", f"STRIDE_{cfg.params.stride}", area, pca_folder, cfg.params.grid_set, f"N_DELAYS_{n_delays}")
+
+                os.makedirs(save_dir, exist_ok=True)
+                
+                saved_files = os.listdir(save_dir)
+                indices_to_run = []
+                for run_index in range(len(delase_run_list[area])):
+                    filename = f"run_index-{run_index}.pkl"
+                    if filename not in saved_files:
+                        indices_to_run.append(run_index)
+                
+                if len(indices_to_run) == 0:
+                    log_msg(f"*COMPLETE*: All results completed for {session} - {area}!!", log, verbose)
+                elif len(indices_to_run) == len(delase_run_list[area]):
+                    log_msg(f"NOT STARTED: no results completed for {session} - {area} - n_delays {n_delays}. Adding all indices! ({len(indices_to_run)})", log, verbose)
+                    if session not in all_indices_to_run:
+                        all_indices_to_run[session] = {}
+                    if n_delays not in all_indices_to_run[session]:
+                        all_indices_to_run[session][n_delays] = {}
+                    all_indices_to_run[session][n_delays][area] = indices_to_run
+                else:
+                    log_msg(f"INCOMPLETE: {session} - {area} - n_delays {n_delays} incomplete, adding indices {indices_to_run}", log, verbose)
+                    if session not in all_indices_to_run:
+                        all_indices_to_run[session] = {}
+                    if n_delays not in all_indices_to_run[session]:
+                        all_indices_to_run[session][n_delays] = {}
+                    all_indices_to_run[session][n_delays][area] = indices_to_run
+    return all_indices_to_run
+
+def get_delase_hyperparam_results(cfg, session_list, areas, pca_chosen, n_delays_vals, verbose=False):
+    delase_hparam_results = {}
+    
+    # Calculate total number of files to load for progress tracking
+    total_files = 0
+    session_run_counts = {}
+    for session in session_list:
+        delase_run_list = get_delase_run_list(cfg, session, verbose=False)
+        session_run_counts[session] = {}
+        for area in areas:
+            session_run_counts[session][area] = len(delase_run_list[area])
+            total_files += len(delase_run_list[area]) * len(n_delays_vals)
+    
+    # Initialize progress bar
+    if verbose:
+        iterator = tqdm(total=total_files, desc="Loading DeLASE hyperparam results", disable=False)
+    else:
+        iterator = tqdm(total=total_files, desc="Loading DeLASE hyperparam results", disable=True)
+    
+    for session in session_list:
+        if verbose:
+            print("-"*20)
+            print(f"SESSION = {session}")
+            print("-"*20)
+        
+        # Get the delase run list for this session to know expected run indices
+        delase_run_list = get_delase_run_list(cfg, session, verbose=False)
+        
+        noise_filter_folder = f"NOISE_FILTERED_{cfg.params.window}_{cfg.params.wake_amplitude_thresh}_{cfg.params.anesthesia_amplitude_thresh}_{cfg.params.electrode_num_thresh}_stride_{cfg.params.stride}" if cfg.params.noise_filter else "NO_NOISE_FILTER"
+        normed_folder = 'NOT_NORMED' if not cfg.params.normed else 'NORMED'
+        filter_folder = f"[{cfg.params.high_pass},{cfg.params.low_pass}]" if cfg.params.low_pass is not None or cfg.params.high_pass is not None else 'NO_FILTER'
+
+        delase_hparam_results[session] = {}
+        for area in areas:
+            delase_hparam_results[session][area] = {}
+
+            for n_delays in n_delays_vals:
+                pca_folder = "NO_PCA" if not cfg.params.pca else f"PCA_{pca_chosen[session][area]}"
+                save_dir = os.path.join(
+                    cfg.params.delase_results_dir,
+                    cfg.params.data_class,
+                    'delase_hyperparam_results',
+                    session,
+                    noise_filter_folder,
+                    normed_folder,
+                    f"SUBSAMPLE_{cfg.params.subsample}",
+                    filter_folder,
+                    f"WINDOW_{cfg.params.window}",
+                    f"STRIDE_{cfg.params.stride}",
+                    area,
+                    pca_folder,
+                    cfg.params.grid_set,
+                    f"N_DELAYS_{n_delays}"
+                )
+
+                if verbose:
+                    print(f"Loading hyperparam data for {session} - {area} - n_delays {n_delays} from {save_dir}")
+
+                rows = []
+                expected_run_count = len(delase_run_list[area])
+                loaded_files = 0
+                missing_files = []
+                
+                # Check every expected run index from the run list
+                for run_index in range(expected_run_count):
+                    filename = f"run_index-{run_index}.pkl"
+                    filepath = os.path.join(save_dir, filename)
+                    
+                    if os.path.exists(filepath):
+                        try:
+                            ret = pd.read_pickle(filepath)
+                            loaded_files += 1
+                            
+                            if isinstance(ret, list):
+                                for r in ret:
+                                    if isinstance(r, dict):
+                                        r_rec = dict(r)
+                                    else:
+                                        r_rec = dict(r.__dict__) if hasattr(r, '__dict__') else {'result': r}
+                                    r_rec['run_index'] = run_index
+                                    r_rec['n_delays'] = n_delays
+                                    if 'Js' in r_rec:
+                                        del r_rec['Js']
+                                    rows.append(r_rec)
+                            elif isinstance(ret, dict):
+                                r_rec = dict(ret)
+                                if 'Js' in r_rec:
+                                    del r_rec['Js']
+                                r_rec['run_index'] = run_index
+                                r_rec['n_delays'] = n_delays
+                                rows.append(r_rec)
+                            else:
+                                rows.append({'run_index': run_index, 'n_delays': n_delays, 'result': ret})
+                        except Exception as e:
+                            if verbose:
+                                print(f"Error loading {filename}: {e}")
+                            missing_files.append(run_index)
+                    else:
+                        missing_files.append(run_index)
+                    
+                    # Update progress bar for each file checked
+                    iterator.update(1)
+                
+                if verbose:
+                    print(f"Loaded {loaded_files}/{expected_run_count} files for {session} - {area} - n_delays {n_delays}")
+                    if missing_files:
+                        print(f"Missing files for run indices: {missing_files}")
+                    if not os.path.exists(save_dir):
+                        print(f"Directory does not exist: {save_dir}")
+
+                if len(rows) == 0 and verbose:
+                    print(f"No hyperparam results found for {session} - {area} - n_delays {n_delays}")
+
+                df = pd.DataFrame(rows)
+                if len(df) > 0:
+                    if 'window_start' in df.columns and 'rank' in df.columns:
+                        df = df.sort_values(['window_start', 'rank']).reset_index(drop=True)
+                    elif 'window_start' in df.columns:
+                        df = df.sort_values(['window_start']).reset_index(drop=True)
+
+                delase_hparam_results[session][area][n_delays] = df
+    
+    iterator.close()
+    return delase_hparam_results
+
+def get_agent_data(cfg, use_individiual_areas=False, verbose=False):
+    anesthetic_agent_list = cfg.plotting.anesthetic_agent_list
+    agent_data = {}
+    for data_class, agent in tqdm(anesthetic_agent_list):
+        # if agent == 'propofol':
+        #     cfg.params.grid_set = 'grid_set5'
+        # else:
+        #     cfg.params.grid_set = 'grid_set4'
+        # cfg.params.grid_set = 'grid_set6'
+
+        cfg.params.data_class = data_class
+        if 'propofol' in cfg.params.data_class:
+            session_list = [f[:-4] for f in os.listdir(os.path.join(cfg.params.all_data_dir, 'anesthesia', 'mat', cfg.params.data_class)) if f.endswith('.mat')]
+            if use_individiual_areas:
+                areas = ['vlPFC', 'FEF', '7b', 'CPB']
+            else:
+                areas = ['all']
+            cfg.params.grid_set = 'grid_set6'
+            # areas = ['all', 'vlPFC', 'FEF', '7b', 'CPB']
+        else:
+            session_list = [f[:-4] for f in os.listdir(os.path.join(cfg.params.all_data_dir, cfg.params.data_class, 'mat')) if f.endswith('.mat')]
+            session_list = [session for session in session_list if session not in ['PEDRI_Ketamine_20220203']]
+            # bad_session_list = ['PEDRI_Ketamine_20220113', 'PEDRI_Ketamine_20220126', 'PEDRI_Ketamine_20220203', 'PEDRI_Ketamine_20220222', 'SPOCK_Ketamine_20210722', 'SPOCK_Ketamine_20210730']
+            # session_list = [session for session in session_list if session not in bad_session_list]
+            session_list = [session for session in session_list if agent.lower()[:3] in session.lower()]
+            # areas = ['all'] if not use_individiual_areas else ['all', 'vlPFC-L', 'vlPFC-R', 'dlPFC-L', 'dlPFC-R']
+            # areas = ['all', 'vlPFC-L', 'vlPFC-R', 'dlPFC-L', 'dlPFC-R']
+            if use_individiual_areas:
+                areas = ['vlPFC-L', 'vlPFC-R', 'dlPFC-L', 'dlPFC-R']
+                cfg.params.grid_set = 'grid_set7'
+            else:
+                areas = ['all']
+                cfg.params.grid_set = 'grid_set6'
+
+            # get only high dose sessions
+            high_dose_session_list = []
+            for session in session_list:
+                session_file = h5py.File(os.path.join(cfg.params.all_data_dir, cfg.params.data_class, 'mat', session + '.mat'), 'r')
+                dose = session_file['sessionInfo']['dose'][0, 0]
+                if dose > 9:
+                    high_dose_session_list.append(session)
+            session_list = high_dose_session_list
+        
+        agent_data[(data_class, agent)] = {'session_list': session_list}
+
+        session_lists, locs, rocs, ropaps = get_all_session_loc_roc_info(cfg, session_list, verbose=False)
+
+        agent_data[(data_class, agent)]['session_lists'] = session_lists
+        agent_data[(data_class, agent)]['locs'] = locs
+        agent_data[(data_class, agent)]['rocs'] = rocs
+        agent_data[(data_class, agent)]['ropaps'] = ropaps
+
+        noise_filter_info = get_noise_filter_info(cfg, session_list, verbose=verbose)
+        agent_data[(data_class, agent)]['noise_filter_info'] = noise_filter_info
+        
+        pca_chosen = get_pca_chosen(cfg, session_list, areas, noise_filter_info, verbose=verbose)
+        agent_data[(data_class, agent)]['pca_chosen'] = pca_chosen
+        all_indices_to_run = collect_grid_indices_to_run(cfg, session_list, areas, noise_filter_info, pca_chosen, verbose=verbose)
+        if all_indices_to_run:
+            raise ValueError(f"Sessions for agent {agent} have incomplete grid search - cannot continue")
+
+        # section_info, _, _, _ = get_section_info(session_list[0], cfg.params.all_data_dir, cfg.params.data_class)
+        # grid_search_results = get_grid_search_results(cfg, session_list, areas, len(section_info), pca_chosen, verbose=verbose)
+        # agent_data[(data_class, agent)]['section_info'] = section_info
+        # agent_data[(data_class, agent)]['grid_search_results'] = grid_search_results
+
+        grid_params_to_use = get_grid_params_to_use(cfg, session_list, areas, noise_filter_info, pca_chosen, verbose=verbose)
+        agent_data[(data_class, agent)]['grid_params_to_use'] = grid_params_to_use
+        all_indices_to_run = collect_delase_indices_to_run(cfg, session_list, areas, noise_filter_info, pca_chosen, grid_params_to_use, verbose=verbose)
+        
+        if all_indices_to_run:
+            raise ValueError(f"Sessions for agent {agent} have incomplete DeLASE - cannot continue")
+
+        delase_results = get_delase_results(cfg, session_list, areas, grid_params_to_use, pca_chosen, verbose=verbose)
+        agent_data[(data_class, agent)]['delase_results'] = delase_results
+    
+    return agent_data
+
+def get_all_session_loc_roc_info(cfg, session_list, verbose=False):
+    if 'Lvr' in cfg.params.data_class or 'lever' in cfg.params.data_class:
+        # Create a dictionary to organize sessions by monkey and dose
+        session_lists = {
+            'SPOCK': {'low': [], 'high': []},
+            'PEDRI': {'low': [], 'high': []}
+        }
+
+        # Populate the dictionary
+        for session in session_list:
+            monkey = session.split('_')[0]
+            dose = h5py.File(os.path.join(cfg.params.all_data_dir, cfg.params.data_class, 'mat', f"{session}.mat"))['sessionInfo']['dose'][0, 0]
+            if dose in [1.0, 5.0]:
+                session_lists[monkey]['low'].append(session)
+            if dose in [10.0, 20.0]:
+                session_lists[monkey]['high'].append(session)
+        
+        locs ={}
+        rocs = {}
+        ropaps = {}
+        iterator = tqdm(total=len(session_list), disable=not verbose)
+        for monkey in session_lists.keys():
+            locs[monkey] = {}
+            rocs[monkey] = {}
+            ropaps[monkey] = {}
+            for dose in session_lists[monkey].keys():
+                locs[monkey][dose] = []
+                rocs[monkey][dose] = []
+                ropaps[monkey][dose] = []
+                for session in session_lists[monkey][dose]:
+                    loc, roc, ropap = get_loc_roc(cfg, h5py.File(os.path.join(cfg.params.all_data_dir, cfg.params.data_class, 'mat', f"{session}.mat")), simple=False)
+                    infusion_start = h5py.File(os.path.join(cfg.params.all_data_dir, cfg.params.data_class, 'mat', f"{session}.mat"))['sessionInfo']['infusionStart'][0, 0]
+                    if loc is not None:
+                        locs[monkey][dose].append(loc - infusion_start)
+                    if roc is not None:
+                        rocs[monkey][dose].append(roc - infusion_start)
+                    if ropap is not None:
+                        ropaps[monkey][dose].append(ropap - infusion_start)
+
+                    iterator.update()
+        iterator.close()
+    else: # propofol is the data class
+        session_lists = {
+            'Mary': {'high': []},
+            'MrJones': {'high': []}
+        }
+
+        for session in session_list:
+            monkey = session.split('-')[0]
+            session_lists[monkey]['high'].append(session)
+
+        locs = {}
+        rocs = {}
+        ropaps = {}
+        iterator = tqdm(total=len(session_list), disable=not verbose)
+        for monkey in session_lists.keys():
+            locs[monkey] = {}
+            rocs[monkey] = {}
+            ropaps[monkey] = {}
+            for dose in session_lists[monkey].keys():
+                locs[monkey][dose] = []
+                rocs[monkey][dose] = []
+                ropaps[monkey][dose] = []
+                for session in session_lists[monkey][dose]:
+                    loc, roc, ropap = get_loc_roc(cfg, h5py.File(os.path.join(cfg.params.all_data_dir, 'anesthesia', 'mat', cfg.params.data_class, f"{session}.mat")))
+                    infusion_start = h5py.File(os.path.join(cfg.params.all_data_dir, 'anesthesia', 'mat', cfg.params.data_class, f"{session}.mat"))['sessionInfo']['drugStart'][0, 0]
+                    locs[monkey][dose].append(loc - infusion_start)
+                    rocs[monkey][dose].append(roc - infusion_start)
+                    ropaps[monkey][dose].append(ropap - infusion_start)
+
+                iterator.update()
+        iterator.close()
+    # everything is relative to the infusion start, so infusion start is 0
+    return session_lists, locs, rocs, ropaps

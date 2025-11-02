@@ -12,12 +12,16 @@ import torch
 
 log = logging.getLogger('DeLASE Logger')
 log.info("Current directory: " + os.getcwd())
-from ..data_utils import filter_data, get_data_class, get_delase_run_list, load_session_data, load_window_from_chunks
+from UniversalUnconsciousness.data_utils import filter_data, get_data_class, get_delase_run_list, load_session_data, load_window_from_chunks
 
 from delase import DeLASE 
 from delase.metrics import aic, mase, mse, r2_score
 
-from hdf5_utils import TransposedDatasetView
+from UniversalUnconsciousness.hdf5_utils import TransposedDatasetView
+
+# Disable HDF5 file locking to avoid network filesystem lock errors when reading
+# .mat/.h5 files concurrently across Hydra multiruns.
+os.environ.setdefault("HDF5_USE_FILE_LOCKING", "FALSE")
 
 def compute_delase(cfg, session, run_params):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -84,9 +88,12 @@ def compute_delase(cfg, session, run_params):
     start = time.time()
 
     if isinstance(cfg.params.rank, int):
-        ranks = [cfg.params.rank]
+        ranks = np.array([cfg.params.rank])
     else:
-        ranks = cfg.params.rank
+        ranks = np.array(cfg.params.rank)
+
+    max_rank = lfp.shape[-1]*cfg.params.n_delays
+    ranks = ranks[ranks <= max_rank]
 
     # Compute SVD once
     delase = DeLASE(lfp,
@@ -111,8 +118,8 @@ def compute_delase(cfg, session, run_params):
         result = {} | run_params
         result['stability_params'] = delase.stability_params.cpu().numpy()
         result['stability_freqs'] = delase.stability_freqs.cpu().numpy()
-        if cfg.params.area == 'all':
-            result['Js'] = delase.Js.cpu().numpy()
+        # if cfg.params.area == 'all':
+        #     result['Js'] = delase.Js.cpu().numpy()
         
         log.info(f"DeLASE fit for rank {rank} in {time.time() - start} seconds")
         
@@ -173,7 +180,7 @@ def main(cfg):
     
     run_params = delase_run_list[cfg.params.area][cfg.params.run_index]
 
-    noise_filter_folder = f"NOISE_FILTERED_{cfg.params.window}_{cfg.params.wake_amplitude_thresh}_{cfg.params.anesthesia_amplitude_thresh}_{cfg.params.electrode_num_thresh}" if cfg.params.noise_filter else "NO_NOISE_FILTER"
+    noise_filter_folder = f"NOISE_FILTERED_{cfg.params.window}_{cfg.params.wake_amplitude_thresh}_{cfg.params.anesthesia_amplitude_thresh}_{cfg.params.electrode_num_thresh}_stride_{cfg.params.stride}" if cfg.params.noise_filter else "NO_NOISE_FILTER"
     normed_folder = 'NOT_NORMED' if not cfg.params.normed else 'NORMED'
     filter_folder = f"[{cfg.params.high_pass},{cfg.params.low_pass}]" if cfg.params.low_pass is not None or cfg.params.high_pass is not None else 'NO_FILTER'
     sections_to_use_folder = 'SECTIONS_TO_USE_' + '__'.join(['_'.join(section.split(' ')) for section in cfg.params.sections_to_use])
@@ -189,23 +196,35 @@ def main(cfg):
     if cfg.params.testing:
         return results
     else:
-        for result in results:
-            rank = result['rank']
-            grid_folder = f"GRID_RESULTS_n_delays_{cfg.params.n_delays}_rank_{rank}"
-            save_dir = os.path.join(cfg.params.delase_results_dir, cfg.params.data_class, 'delase_results', cfg.params.session, noise_filter_folder, normed_folder, f"SUBSAMPLE_{cfg.params.subsample}", filter_folder, f"WINDOW_{cfg.params.window}", grid_folder, f"STRIDE_{cfg.params.stride}", run_params['area'], pca_folder)
-            os.makedirs(save_dir, exist_ok=True)
+        save_dir = os.path.join(cfg.params.delase_results_dir, cfg.params.data_class, 'delase_hyperparam_results', cfg.params.session, noise_filter_folder, normed_folder, f"SUBSAMPLE_{cfg.params.subsample}", filter_folder, f"WINDOW_{cfg.params.window}", f"STRIDE_{cfg.params.stride}", cfg.params.area, pca_folder, cfg.params.grid_set, f"N_DELAYS_{cfg.params.n_delays}")
+        save_file_path = os.path.join(save_dir, f"run_index-{cfg.params.run_index}.pkl")
+        os.makedirs(save_dir, exist_ok=True)
+        print(save_file_path)
+        if os.path.exists(save_file_path):
+            print(f"Session {cfg.params.session} area {cfg.params.area} run index {cfg.params.run_index} n_delays {cfg.params.n_delays} ranks {cfg.params.rank} already exists. Skipping.")
+            log.info(f"Session {cfg.params.session} area {cfg.params.area} run index {cfg.params.run_index} n_delays {cfg.params.n_delays} ranks {cfg.params.rank} already exists. Skipping.")
+        else:
+            print(f"Session {cfg.params.session} area {cfg.params.area} run index {cfg.params.run_index} n_delays {cfg.params.n_delays} ranks {cfg.params.rank} does not exist. Saving.")
+            log.info(f"Session {cfg.params.session} area {cfg.params.area} run index {cfg.params.run_index} n_delays {cfg.params.n_delays} ranks {cfg.params.rank} does not exist. Saving.")
+            pd.to_pickle(results, save_file_path)
 
-            save_file_path = os.path.join(save_dir, f"run_index-{cfg.params.run_index}.pkl")
+        # for result in results:
+        #     rank = result['rank']
+        #     grid_folder = f"GRID_RESULTS_n_delays_{cfg.params.n_delays}_rank_{rank}"
+        #     save_dir = os.path.join(cfg.params.delase_results_dir, cfg.params.data_class, 'delase_results', cfg.params.session, noise_filter_folder, normed_folder, f"SUBSAMPLE_{cfg.params.subsample}", filter_folder, f"WINDOW_{cfg.params.window}", grid_folder, f"STRIDE_{cfg.params.stride}", run_params['area'], pca_folder)
+        #     os.makedirs(save_dir, exist_ok=True)
 
-            if os.path.exists(save_file_path):
-                # print("File found but saving results anyway")
-                # pd.to_pickle(result, save_file_path)
-                print(f"Session {cfg.params.session} area {cfg.params.area} run index {cfg.params.run_index} rank {rank} n_delays {cfg.params.n_delays} already exists. Skipping.")
-                log.info(f"Session {cfg.params.session} area {cfg.params.area} run index {cfg.params.run_index} rank {rank} n_delays {cfg.params.n_delays} already exists. Skipping.")
-            else:
-                print(f"Session {cfg.params.session} area {cfg.params.area} run index {cfg.params.run_index} rank {rank} n_delays {cfg.params.n_delays} does not exist. Saving.")
-                log.info(f"Session {cfg.params.session} area {cfg.params.area} run index {cfg.params.run_index} rank {rank} n_delays {cfg.params.n_delays} does not exist. Saving.")
-                pd.to_pickle(result, save_file_path)
+        #     save_file_path = os.path.join(save_dir, f"run_index-{cfg.params.run_index}.pkl")
+
+        #     if os.path.exists(save_file_path):
+        #         # print("File found but saving results anyway")
+        #         # pd.to_pickle(result, save_file_path)
+        #         print(f"Session {cfg.params.session} area {cfg.params.area} run index {cfg.params.run_index} rank {rank} n_delays {cfg.params.n_delays} already exists. Skipping.")
+        #         log.info(f"Session {cfg.params.session} area {cfg.params.area} run index {cfg.params.run_index} rank {rank} n_delays {cfg.params.n_delays} already exists. Skipping.")
+        #     else:
+        #         print(f"Session {cfg.params.session} area {cfg.params.area} run index {cfg.params.run_index} rank {rank} n_delays {cfg.params.n_delays} does not exist. Saving.")
+        #         log.info(f"Session {cfg.params.session} area {cfg.params.area} run index {cfg.params.run_index} rank {rank} n_delays {cfg.params.n_delays} does not exist. Saving.")
+        #         pd.to_pickle(result, save_file_path)
 
 if __name__ == '__main__':
     main()

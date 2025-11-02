@@ -10,6 +10,7 @@ import sys
 import time
 import torch
 
+from delase import DeLASE
 from delase.dmd import DMD
 from delase.metrics import aic, mase, mse, r2_score
 
@@ -50,24 +51,51 @@ def compute_havok_fit(cfg, run_params):
     # FIT DMD
     # --------------------
 
-    log.info("Fitting DMD")
+    if cfg.params.compute_delase_on_grid:
+        method = 'DeLASE'
+    else:
+        method = 'DMD'
+
+    log.info(f"Fitting {method}")
     start = time.time()
 
     if isinstance(run_params['rank'], int):
         if rank <= lfp.shape[1]*run_params['n_delays']:
-            dmd = DMD(lfp, n_delays=run_params['n_delays'], rank=run_params['rank'], device=device, verbose=True)
-            dmd.fit()
-            log.info(f"DMD fit in {time.time() - start} seconds")
+            if cfg.params.compute_delase_on_grid:
+                delase = DeLASE(
+                            lfp,
+                            n_delays=run_params['n_delays'],
+                            rank=run_params['rank'],
+                            device=device,
+                            dt=dt*cfg.params.subsample,
+                            max_freq=cfg.params.max_freq,
+                            max_unstable_freq=cfg.params.max_unstable_freq, 
+                            verbose=True
+                        )
+                delase.fit()
+            else:
+                dmd = DMD(lfp, n_delays=run_params['n_delays'], rank=run_params['rank'], device=device, verbose=True)
+                dmd.fit()
+            log.info(f"{method} fit in {time.time() - start} seconds")
 
-            lfp_test_pred = dmd.predict(test_data=lfp_test).cpu()
+            n_delays = run_params['n_delays']
+            rank = run_params['rank']
+            if cfg.params.compute_delase_on_grid:
+                lfp_test_pred = delase.DMD.predict(test_data=lfp_test).cpu()
+            else:
+                lfp_test_pred = dmd.predict(test_data=lfp_test).cpu()
 
             # collect results
             result = dict(
-                mase=mase(lfp_test[dmd.n_delays:], lfp_test_pred[dmd.n_delays:].cpu().numpy()),
-                r2=r2_score(lfp_test[dmd.n_delays:], lfp_test_pred[dmd.n_delays:].cpu().numpy()),
-                aic=aic(lfp_test[dmd.n_delays:], lfp_test_pred[dmd.n_delays:].cpu().numpy(), k=dmd.A_v.shape[0]*dmd.A_v.shape[1]),
-                mse=mse(lfp_test[dmd.n_delays:], lfp_test_pred[dmd.n_delays:].cpu().numpy())
+                mase=mase(lfp_test[n_delays:], lfp_test_pred[n_delays:].cpu().numpy()),
+                r2=r2_score(lfp_test[n_delays:], lfp_test_pred[n_delays:].cpu().numpy()),
+                aic=aic(lfp_test[n_delays:], lfp_test_pred[n_delays:].cpu().numpy(), k=rank**2),
+                mse=mse(lfp_test[n_delays:], lfp_test_pred[n_delays:].cpu().numpy())
             )
+            if cfg.params.compute_delase_on_grid:
+                result['stability_params'] = delase.stability_params.cpu().numpy()
+                result['stability_freqs'] = delase.stability_freqs.cpu().numpy()
+
         else:
             result = dict(
                 mase=np.nan,
@@ -75,27 +103,54 @@ def compute_havok_fit(cfg, run_params):
                 aic=np.nan,
                 mse=np.nan
             )
+            if cfg.params.compute_delase_on_grid:
+                result['stability_params'] = np.nan
+                result['stability_freqs'] = np.nan
     else: # list or np.array
         result = []
 
-        dmd = DMD(lfp, n_delays=run_params['n_delays'], rank=None, device=device, verbose=True)
-        dmd.compute_hankel()
-        dmd.compute_svd()
+        if cfg.params.compute_delase_on_grid:
+            delase = DeLASE(
+                        lfp,
+                        n_delays=run_params['n_delays'],
+                        rank=None,
+                        device=device,
+                        dt=dt*cfg.params.subsample,
+                        max_freq=cfg.params.max_freq,
+                        max_unstable_freq=cfg.params.max_unstable_freq, 
+                        verbose=True
+                    )
+            delase.DMD.compute_hankel()
+            delase.DMD.compute_svd()
+        else:
+            dmd = DMD(lfp, n_delays=run_params['n_delays'], rank=None, device=device, verbose=True)
+            dmd.compute_hankel()
+            dmd.compute_svd()
 
         for rank in run_params['rank']:
             if rank <= lfp.shape[1]*run_params['n_delays']:
-                dmd.rank = rank
-                dmd.compute_havok_dmd()
+                if cfg.params.compute_delase_on_grid:
+                    delase.DMD.rank = rank
+                    delase.DMD.compute_havok_dmd()
+                    lfp_test_pred = delase.DMD.predict(test_data=lfp_test).cpu()
+                    delase.get_stability()
+                else:
+                    dmd.rank = rank
+                    dmd.compute_havok_dmd()
 
-                lfp_test_pred = dmd.predict(test_data=lfp_test).cpu()
+                    lfp_test_pred = dmd.predict(test_data=lfp_test).cpu()
 
+                n_delays = run_params['n_delays']
                 # collect results
                 result.append(dict(
-                    mase=mase(lfp_test[dmd.n_delays:], lfp_test_pred[dmd.n_delays:].cpu().numpy()),
-                    r2=r2_score(lfp_test[dmd.n_delays:], lfp_test_pred[dmd.n_delays:].cpu().numpy()),
-                    aic=aic(lfp_test[dmd.n_delays:], lfp_test_pred[dmd.n_delays:].cpu().numpy(), k=dmd.A_v.shape[0]*dmd.A_v.shape[1]),
-                    mse=mse(lfp_test[dmd.n_delays:], lfp_test_pred[dmd.n_delays:].cpu().numpy())
+                    mase=mase(lfp_test[n_delays:], lfp_test_pred[n_delays:].cpu().numpy()),
+                    r2=r2_score(lfp_test[n_delays:], lfp_test_pred[n_delays:].cpu().numpy()),
+                    aic=aic(lfp_test[n_delays:], lfp_test_pred[n_delays:].cpu().numpy(), k=rank**2),
+                    mse=mse(lfp_test[n_delays:], lfp_test_pred[n_delays:].cpu().numpy())
                 ))
+                if cfg.params.compute_delase_on_grid:
+                    result[-1]['stability_params'] = delase.stability_params.cpu().numpy()
+                    result[-1]['stability_freqs'] = delase.stability_freqs.cpu().numpy()
             else:
                 result.append(dict(
                     mase=np.nan,
@@ -103,6 +158,9 @@ def compute_havok_fit(cfg, run_params):
                     aic=np.nan,
                     mse=np.nan
                 ))
+                if cfg.params.compute_delase_on_grid:
+                    result[-1]['stability_params'] = np.nan
+                    result[-1]['stability_freqs'] = np.nan
 
         log.info(f"All DMDs fit in {time.time() - start} seconds")
 
@@ -123,7 +181,7 @@ def main(cfg):
     run_params = grid_search_run_list[cfg.params.area][cfg.params.run_index]
 
     normed_folder = 'NOT_NORMED' if not cfg.params.normed else 'NORMED'
-    noise_filter_folder = f"NOISE_FILTERED_{cfg.params.window}_{cfg.params.wake_amplitude_thresh}_{cfg.params.anesthesia_amplitude_thresh}_{cfg.params.electrode_num_thresh}" if cfg.params.noise_filter else "NO_NOISE_FILTER"
+    noise_filter_folder = f"NOISE_FILTERED_{cfg.params.window}_{cfg.params.wake_amplitude_thresh}_{cfg.params.anesthesia_amplitude_thresh}_{cfg.params.electrode_num_thresh}_stride_{cfg.params.stride}" if cfg.params.noise_filter else "NO_NOISE_FILTER"
     filter_folder = f"[{cfg.params.high_pass},{cfg.params.low_pass}]" if cfg.params.low_pass is not None or cfg.params.high_pass is not None else 'NO_FILTER'
     pca_folder = "NO_PCA" if not cfg.params.pca else f"PCA_{cfg.params.pca_dims}"
     save_dir = os.path.join(cfg.params.grid_search_results_dir, cfg.params.data_class, 'grid_search_results', cfg.params.session, noise_filter_folder, normed_folder, f"SUBSAMPLE_{cfg.params.subsample}", filter_folder, f"WINDOW_{cfg.params.window}", cfg.params.grid_set, run_params['area'], pca_folder)
@@ -141,7 +199,7 @@ def main(cfg):
 
             result = compute_havok_fit(cfg, run_params)
 
-            log.info("Saving results")
+            log.info("Saving results to " + save_file_path)
             pd.to_pickle(result, save_file_path)
         
 

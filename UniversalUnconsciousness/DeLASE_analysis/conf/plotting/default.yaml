@@ -16,3 +16,10 @@ loc_roc_colors:
   dexmedetomidine: '#F7A2A1'
   ketamine: '#89B8BE'
 
+epoch_colors:
+  awake: '#32CD32'
+  induction: '#61C9A8'
+  anesthesia: '#D65CD4'
+  late_anesthesia: '#E28DE0'
+  emergence: '#FFA500'
+
