@@ -11,6 +11,48 @@ from tqdm.auto import tqdm
 
 from .hdf5_utils import *
 
+# Compatibility shim: allow reading pickles created with NumPy 2.x when running under NumPy 1.x
+# NumPy 2.x pickles may reference modules under `numpy._core.*`, which do not exist in NumPy 1.x.
+# We register lightweight module aliases before any pandas.read_pickle calls.
+def _install_numpy2_aliases_for_numpy1() -> None:
+    try:
+        import numpy  # noqa: F401
+        import sys
+        import types
+        # If this import succeeds, we're on NumPy 2 already and don't need aliases
+        try:
+            import numpy._core.numeric  # type: ignore
+            return
+        except Exception:
+            pass
+
+        # Running on NumPy 1.x: create aliases that NumPy 2.x pickles expect
+        import numpy.core.numeric as _np_core_numeric
+        sys.modules.setdefault('numpy._core', types.ModuleType('numpy._core'))
+        sys.modules['numpy._core.numeric'] = _np_core_numeric
+
+        # Additional common aliases used by some pickles
+        try:
+            import numpy.core.numerictypes as _np_core_numerictypes
+            sys.modules['numpy._core.numerictypes'] = _np_core_numerictypes
+        except Exception:
+            pass
+        try:
+            import numpy.core.shape_base as _np_core_shape_base
+            sys.modules['numpy._core.shape_base'] = _np_core_shape_base
+        except Exception:
+            pass
+        try:
+            import numpy.core._multiarray_umath as _np_core_mau
+            sys.modules['numpy._core._multiarray_umath'] = _np_core_mau
+        except Exception:
+            pass
+    except Exception:
+        # If anything fails, we don't block import; downstream read_pickle may still work
+        pass
+
+_install_numpy2_aliases_for_numpy1()
+
 def get_data_class(session, all_data_dir):
     data_class = None
     for (dirpath, dirnames, filenames) in os.walk(all_data_dir):

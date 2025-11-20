@@ -1,6 +1,9 @@
 [build-system]
-requires = ["setuptools"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [project]
 name = "UniversalUnconsciousness"
@@ -10,6 +13,40 @@ authors = [
   {name = "Adam J. Eisen", email = "eisenaj@mit.edu" }
 ]
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["UniversalUnconsciousness*"]
+requires-python = ">=3.11"
+dependencies = [
+  "h5py",
+  "hydra-core",
+  "hydra-submitit-launcher",
+  "hydra-list-sweeper",
+  "jupyter",
+  "jupyterlab",
+  "matplotlib",
+  "numpy>=1.26,<2.0",
+  "pandas",
+  "scikit-learn",
+  "scipy",
+  "seaborn",
+  "statsmodels",
+  "colorcet",
+  "tqdm",
+  "torch==2.0.1+cu118",
+  "setuptools>=77,<81",
+  "delase @ git+https://github.com/adamjeisen/DeLASE.git",
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.1.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["UniversalUnconsciousness"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "UniversalUnconsciousness/**",
+  "pyproject.toml",
+  "README.md",
+  "LICENSE",
+]

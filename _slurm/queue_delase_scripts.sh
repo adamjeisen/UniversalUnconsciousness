@@ -12,7 +12,8 @@
 ##SBATCH --output=/home/eisenaj/code/UniversalUnconsciousness/_slurm/logs/delaseq_%j.log
 ##SBATCH --error=/home/eisenaj/code/UniversalUnconsciousness/_slurm/logs/delaseq_%j.err
 
-source activate universal-unconsciousness
+cd /om2/user/eisenaj/code/UniversalUnconsciousness
+source .venv/bin/activate
 
 # python /home/eisenaj/code/UniversalUnconsciousness/UniversalUnconsciousness/DeLASE_analysis/delase_queueing_script.py
 HYDRA_FULL_ERROR=1 python /om2/user/eisenaj/code/UniversalUnconsciousness/UniversalUnconsciousness/DeLASE_analysis/delase_queueing_script.py

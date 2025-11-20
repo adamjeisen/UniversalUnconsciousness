@@ -8,8 +8,8 @@ noise_filter_results_dir: ${params.results_dir}/noise_filter_info
 all_data_dir: '/scratch2/weka/millerlab/eisenaj/datasets'
 # all_data_dir: /orcd/data/ekmiller/001/common/datasets
 # all_data_dir: null
-# data_class: anesthesiaLvrOdd
-data_class: propofolPuffTone
+data_class: anesthesiaLvrOdd
+# data_class: propofolPuffTone
 session: null
 area: null
 run_index: 0
@@ -20,7 +20,7 @@ areas: ['all']
 
 testing: False
 
-window: 5
+window: 15
 T_pred: null
 
 # grid search
@@ -37,8 +37,9 @@ compute_delase_on_grid: False
 # compute_delase_on_grid: True
 
 # full analysis
-# stride: 15
-stride: 120
+stride: 15
+# reduced analysis time by increasing stride
+# stride: 120
 n_delays: null
 rank: null
 
@@ -60,7 +61,7 @@ normed: False
 subsample: 1
 # low_pass: 80
 # high_pass: 30
-# low_pass: 0.1
-# high_pass: 4
-low_pass: null
-high_pass: null
+low_pass: 0.1
+high_pass: 4
+# low_pass: null
+# high_pass: null

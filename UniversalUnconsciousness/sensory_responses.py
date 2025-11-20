@@ -318,7 +318,7 @@ def get_responses_acf(
                             temp = pca.transform(responses_de.mean(axis=0))[:, 0]
                         # temp is (time, 1)
                         autocorrelation = smt.acf(temp, nlags=n_lags)
-                    elif method == 'individual':
+                    elif method == 'individual': # THIS IS THE ONE USED IN THE PAPER
                         # trials x time x electrodes
                         autocorrelation = np.array([smt.acf(responses_de[i, :, j], nlags=n_lags) for i in range(responses_de.shape[0]) for j in range(responses_de.shape[2])])
                         # (trials * electrodes) x autocorrelation time (n_lags + 1)

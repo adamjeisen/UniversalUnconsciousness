@@ -155,6 +155,10 @@ def main(cfg):
         # print(e)
         log.info(f"Process ID {os.getpid()} executing task {cfg.params.session}, {cfg.params.area}, {cfg.params.run_index} locally")
 
+    if not torch.cuda.is_available():
+        log.info("CUDA is not available. Exiting.")
+        return
+
     # GET RUN PARAMETERS
     print(cfg.params.session)
     delase_run_list = get_delase_run_list(cfg, cfg.params.session)
