@@ -2026,7 +2026,7 @@ def plot_sensory_responses_etdc_grid(cfg, agent_data, curve_colors, epoch_colors
 
 def plot_sensory_responses_acf(agent, curve_colors, epoch_colors, sensory_responses, leadup, response, dt=0.001, n_delays=1, delay_interval=1, plot_legend=False, save_path=None, dims=1, method='individual', use_mean=False, n_lags=50, n_ac_pts=None, verbose=False, data_save_dir=None, axs_override=None, fig_override=None, dose=None, skip_tight_layout=False, suppress_suptitle=False):
     responses_acf = get_responses_acf(sensory_responses, agent, response, n_delays, delay_interval, method, use_mean, n_lags, n_ac_pts, verbose, data_save_dir)
-    time_vals = np.arange(0, n_lags*dt + dt/2, dt)
+    time_vals = np.arange(0, n_lags*dt + dt/2, dt)*1000
     
     # Figure/axes setup (support external grid composition)
     if axs_override is None:
@@ -2099,8 +2099,8 @@ def plot_sensory_responses_acf(agent, curve_colors, epoch_colors, sensory_respon
 
             # Calculate y-coordinates for plotting significance stars at the bottom
             y_min, y_max = axs[ax_idx].get_ylim()
-            purple_star_y = y_min + 0.04 * (y_max - y_min)   # Slightly above the bottom
-            orange_star_y = y_min + 0.08 * (y_max - y_min)  # Offset a bit above purple
+            purple_star_y = y_min - 0.01 * (y_max - y_min)   # Close to the bottom
+            orange_star_y = y_min - 0.06 * (y_max - y_min)  # Offset a bit above purple
 
             # 1) Unconscious vs. Awake
             if (awake_data is not None) and (unconscious_data is not None):
@@ -2123,7 +2123,7 @@ def plot_sensory_responses_acf(agent, curve_colors, epoch_colors, sensory_respon
             # --------------------------------------------------
 
             axs[ax_idx].set_title(f'{monkey_titles[monkey]}' + ('\n' + dose_level + ' dose' if n_plots > 1 else ''))
-            axs[ax_idx].set_xlabel('Time Lag (s)')
+            axs[ax_idx].set_xlabel('Time Lag (ms)')
             axs[ax_idx].set_ylabel('Autocorrelation')
             axs[ax_idx].grid(True, alpha=0.3)
     
@@ -2288,6 +2288,11 @@ def plot_sensory_responses_acf_grid(cfg, agent_data, curve_colors, epoch_colors,
         ax.set_ylabel('')
         ax.set_xlabel('')
     
+    # Set explicit x-axis ticks to show 0, 10, 20, 30, 40, 50 ms
+    x_ticks = [0, 10, 20, 30, 40, 50]
+    for ax in axes.flat:
+        ax.set_xticks(x_ticks)
+    
     # Apply tight_layout first, then adjust for labels
     # Using same positioning as ETDC grid based on user's adjustments
     plt.tight_layout(rect=[0.05, 0.05, 0.95, 0.95])
@@ -2303,7 +2308,7 @@ def plot_sensory_responses_acf_grid(cfg, agent_data, curve_colors, epoch_colors,
         fig.legend(handles=[line1, line2, line3], loc='lower center', bbox_to_anchor=(0.5, -0.04), ncol=3, fontsize=7, frameon=False)
     
     # Shared x-axis label (only show on bottom row) - matching ETDC grid positioning
-    fig.text(0.5, 0.04, 'Time Lag (s)', ha='center', fontsize=8)
+    fig.text(0.5, 0.04, 'Time Lag (ms)', ha='center', fontsize=8)
     
     # Shared y-axis label (only on left column) - matching ETDC grid positioning
     fig.text(0.03, 0.5, 'Autocorrelation', va='center', rotation='vertical', fontsize=8)

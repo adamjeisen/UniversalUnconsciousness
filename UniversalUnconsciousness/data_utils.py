@@ -4,6 +4,7 @@ import numpy as np
 import os
 import pandas as pd
 import scipy.signal as signal
+from scipy.stats import bootstrap, wilcoxon
 from sklearn.decomposition import PCA
 # from spynal.matIO import loadmat
 import time
@@ -1604,3 +1605,81 @@ def get_all_session_loc_roc_info(cfg, session_list, verbose=False):
         iterator.close()
     # everything is relative to the infusion start, so infusion start is 0
     return session_lists, locs, rocs, ropaps
+
+def hodges_lehmann_estimator(differences):
+    """
+    Compute the Hodges-Lehmann estimator for the difference between two paired samples.
+    The estimator is the median of all pairwise differences (epoch1 - epoch2).
+    """
+    # For paired samples, the HL estimator is just the median of paired differences
+    return np.median(differences)
+
+
+def compute_wilcoxon_and_median_diff(epoch1_vals, epoch2_vals, alternative='two-sided'):
+    from scipy.stats import wilcoxon as _wilcoxon, bootstrap as _bootstrap
+    differences = epoch2_vals - epoch1_vals
+    median_diff = hodges_lehmann_estimator(differences)
+    wilcoxon_p_value = _wilcoxon(epoch1_vals, epoch2_vals, alternative=alternative).pvalue
+
+    bootstrap_ci = _bootstrap(
+        (differences,),                # Your data (as a tuple)
+        hodges_lehmann_estimator,                     # The statistic to compute
+        confidence_level=0.95,         # Your desired CI
+        method='percentile',           # Standard percentile method
+        n_resamples=10000               # Number of bootstrap samples
+    )
+
+    ci = (bootstrap_ci.confidence_interval.low, bootstrap_ci.confidence_interval.high)
+
+    return median_diff, wilcoxon_p_value, ci
+
+def power_analysis(epoch1_vals, epoch2_vals, alternative='two-sided'):
+    # 2. --- Calculate the observed differences ---
+    # This is our "population" for the simulation
+    differences = np.array(epoch2_vals) - np.array(epoch1_vals)
+
+    # Set the number of simulations
+    n_simulations = 10000
+    n_significant = 0
+
+    # 3. --- Run the simulation loop ---
+    # 'Resample with replacement' from your observed differences
+    # This simulates a new "experiment"
+    resampled_diffs_all = np.random.choice(differences, size=(n_simulations, len(differences)), replace=True)
+    for sim_num in tqdm(range(n_simulations), desc="Running power analysis"):
+        # 'Resample with replacement' from your observed differences
+        # This simulates a new "experiment"
+        # resampled_diffs = np.random.choice(
+        #     differences, 
+        #     size=len(differences), 
+        #     replace=True
+        # )
+        start_time = time.time()
+        resampled_diffs = resampled_diffs_all[sim_num]
+        end_time = time.time()
+        print(f"Time taken for resampling: {end_time - start_time:.2f} seconds")
+        
+        start_time = time.time()
+        # Run the Wilcoxon test on the new simulated sample
+        # We must handle the case where all differences are zero (rare)
+        if np.all(resampled_diffs == 0):
+            continue
+        end_time = time.time()
+        print(f"Time taken for checking all zeros: {end_time - start_time:.2f} seconds")
+            
+        # We're testing if the median is different from zero
+        # Negate the differences because typically epoch1_vals - epoch2_vals
+        from scipy.stats import wilcoxon as _wilcoxon
+        start_time = time.time()
+        w, p_value = _wilcoxon(-resampled_diffs, alternative=alternative)
+        end_time = time.time()
+        print(f"Time taken for Wilcoxon test: {end_time - start_time:.2f} seconds")
+        
+        # Count if the simulated experiment was "significant"
+        if p_value < 0.05:
+            n_significant += 1
+
+    # 4. --- Calculate the "post-hoc power" ---
+    observed_power = n_significant / n_simulations
+
+    return observed_power
