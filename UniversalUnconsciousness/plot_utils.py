@@ -453,6 +453,9 @@ def plot_session_stability_grouped(cfg, agent, session_lists, delase_results, lo
                     aligned_inverse_arr = np.array(per_area_aligned_data_inverse_timescales[area_name])
 
                 color_for_area = area_color_map[area_name]
+                # Map area names for legend display
+                area_label_map = {'7b': 'PPC', 'CPB': 'STG'}
+                legend_label = area_label_map.get(area_name, area_name) if multiple_areas else None
                 _plot_statistics(
                     ax,
                     aligned_data_arr,
@@ -464,7 +467,7 @@ def plot_session_stability_grouped(cfg, agent, session_lists, delase_results, lo
                     plot_stars=plot_stars,
                     baseline_inverse_timescales=baseline_inverse_arr,
                     aligned_data_inverse_timescales=aligned_inverse_arr,
-                    label=(area_name if multiple_areas else None),
+                    label=legend_label,
                     star_offset_idx=area_idx,
                     star_height_base=star_height_base
                 )
@@ -511,12 +514,7 @@ def plot_session_stability_grouped(cfg, agent, session_lists, delase_results, lo
                     per_area_group_data[area_name] = group_data
             # _add_roc_ropap_lines(ax, rocs[monkey][dose], ropaps[monkey][dose])
             _add_loc_roc_region(ax, locs[monkey][dose], rocs[monkey][dose], loc_roc_color)
-            if multiple_areas:
-                if add_legend:
-                    if legend_outside:
-                        ax.legend(loc='upper left', bbox_to_anchor=(1.01, 1.0), frameon=False, fontsize=legend_fontsize)
-                    else:
-                        ax.legend(fontsize=legend_fontsize)
+            # Legend will be added after infusion start and baseline lines
 
             # Collect return data for this group if requested
             if return_data:
@@ -562,8 +560,24 @@ def plot_session_stability_grouped(cfg, agent, session_lists, delase_results, lo
             ax.set_ylabel('Mean Characteristic Timescale\nRatio to Awake Baseline')
         else:
             ax.set_ylabel('Mean Instability ($s^{-1}$)')
-        # ax.tick_params(labelsize=9)
-        # ax.legend(fontsize=9)
+        # Add legend on the right side if multiple areas and legend is requested
+        if add_legend and multiple_areas:
+            handles, labels = ax.get_legend_handles_labels()
+            # Filter out duplicate labels (infusion start and baseline might be added multiple times)
+            seen = set()
+            unique_handles = []
+            unique_labels = []
+            for handle, label in zip(handles, labels):
+                if label not in seen:
+                    seen.add(label)
+                    unique_handles.append(handle)
+                    unique_labels.append(label)
+            # Show legend with all elements (areas, infusion start, baseline)
+            # Position it to the right of the plot using bbox_to_anchor
+            if len(unique_labels) > 0:
+                ax.legend(handles=unique_handles, labels=unique_labels, 
+                         loc='center left', bbox_to_anchor=(1.02, 0.5), 
+                         frameon=False, fontsize=legend_fontsize)
     
     if not skip_tight_layout:
         plt.tight_layout()
@@ -592,7 +606,9 @@ def plot_session_stability_grouped_grid(cfg, agent_data,
                                         return_data=False,
                                         data_type='delase',
                                         star_height_base=1.01,
-                                        layout='agent_rows'):
+                                        layout='agent_rows',
+                                        add_legend=False,
+                                        legend_fontsize=7):
     """
     Compose a grid of session stability grouped plots with configurable layout:
       - layout='agent_rows' (default): 3-row x 2-column grid
@@ -711,8 +727,8 @@ def plot_session_stability_grouped_grid(cfg, agent_data,
                 fig_override=fig,
                 suppress_suptitle=True,
                 skip_tight_layout=True,
-                add_legend=False,
-                star_height_base=star_height_base
+                add_legend=False,  # Will add column-specific legends later
+                star_height_base=0.92
             )
             if return_data:
                 per_agent_returns[agent] = returned
@@ -723,9 +739,37 @@ def plot_session_stability_grouped_grid(cfg, agent_data,
                 axes[row_idx, col_idx].set_title(
                     f'{agent.capitalize()} ({monkey_titles[monkey]})',
                     color=curve_colors[agent],
-                    pad=8,
+                    pad=12,
                     fontsize=8
                 )
+            
+            # Add legend for this column (agent) on the top subplot of this column
+            if add_legend:
+                # Check if this agent has multiple areas
+                if isinstance(agent_area, (list, tuple, np.ndarray)):
+                    areas_list = list(agent_area)
+                else:
+                    areas_list = [agent_area]
+                multiple_areas = len(areas_list) > 1
+                
+                if multiple_areas:
+                    # Get handles and labels from the top subplot of this column
+                    top_ax = axes[0, col_idx]  # Top row, this column
+                    handles, labels = top_ax.get_legend_handles_labels()
+                    # Filter out duplicate labels
+                    seen = set()
+                    unique_handles = []
+                    unique_labels = []
+                    for handle, label in zip(handles, labels):
+                        if label not in seen:
+                            seen.add(label)
+                            unique_handles.append(handle)
+                            unique_labels.append(label)
+                    # Add legend to the right of the top subplot
+                    if len(unique_labels) > 0:
+                        top_ax.legend(handles=unique_handles, labels=unique_labels,
+                                    loc='center left', bbox_to_anchor=(1.02, 0.5),
+                                    frameon=False, fontsize=legend_fontsize)
     else:  # agent_rows
         # Agents as rows, NHPs as columns (original behavior)
         for row_idx, agent in enumerate(agents_in_order):
@@ -781,8 +825,8 @@ def plot_session_stability_grouped_grid(cfg, agent_data,
                 fig_override=fig,
                 suppress_suptitle=True,
                 skip_tight_layout=True,
-                add_legend=False,
-                star_height_base=star_height_base
+                add_legend=False,  # Will add row-specific legends later (agents are rows in this layout)
+                star_height_base=0.92
             )
             if return_data:
                 per_agent_returns[agent] = returned
@@ -793,9 +837,37 @@ def plot_session_stability_grouped_grid(cfg, agent_data,
                 axes[row_idx, col_idx].set_title(
                     f'{agent.capitalize()} ({monkey_titles[monkey]})',
                     color=curve_colors[agent],
-                    pad=8,
+                    pad=12,
                     fontsize=8
                 )
+            
+            # Add legend for this row (agent) on the rightmost subplot of this row
+            if add_legend:
+                # Check if this agent has multiple areas
+                if isinstance(agent_area, (list, tuple, np.ndarray)):
+                    areas_list = list(agent_area)
+                else:
+                    areas_list = [agent_area]
+                multiple_areas = len(areas_list) > 1
+                
+                if multiple_areas:
+                    # Get handles and labels from the rightmost subplot of this row
+                    rightmost_ax = axes[row_idx, 1]  # This row, rightmost column
+                    handles, labels = rightmost_ax.get_legend_handles_labels()
+                    # Filter out duplicate labels
+                    seen = set()
+                    unique_handles = []
+                    unique_labels = []
+                    for handle, label in zip(handles, labels):
+                        if label not in seen:
+                            seen.add(label)
+                            unique_handles.append(handle)
+                            unique_labels.append(label)
+                    # Add legend to the right of the rightmost subplot
+                    if len(unique_labels) > 0:
+                        rightmost_ax.legend(handles=unique_handles, labels=unique_labels,
+                                          loc='center left', bbox_to_anchor=(1.02, 0.5),
+                                          frameon=False, fontsize=legend_fontsize)
 
     # Remove individual axis labels (x-axis shared, y-axis shared)
     for ax in axes.flat:
@@ -803,8 +875,8 @@ def plot_session_stability_grouped_grid(cfg, agent_data,
         ax.set_xlabel('')
 
     # Apply tight_layout first, then adjust for labels
-    # Using same positioning as ACF grid based on user's adjustments
-    plt.tight_layout(rect=[0.05, 0.05, 0.95, 0.95])
+    # Leave extra space on the right for legends (0.88 instead of 0.95)
+    plt.tight_layout(rect=[0.05, 0.05, 0.88, 0.95])
 
     # Shared x-axis label (only show on bottom row) - matching ACF grid positioning
     fig.text(0.5, 0.04, 'Time Relative to Infusion Start (min)', ha='center', fontsize=8)

@@ -1633,13 +1633,12 @@ def compute_wilcoxon_and_median_diff(epoch1_vals, epoch2_vals, alternative='two-
 
     return median_diff, wilcoxon_p_value, ci
 
-def power_analysis(epoch1_vals, epoch2_vals, alternative='two-sided'):
+def power_analysis(epoch1_vals, epoch2_vals, alternative='two-sided', n_simulations=10000):
     # 2. --- Calculate the observed differences ---
     # This is our "population" for the simulation
     differences = np.array(epoch2_vals) - np.array(epoch1_vals)
 
     # Set the number of simulations
-    n_simulations = 10000
     n_significant = 0
 
     # 3. --- Run the simulation loop ---
@@ -1654,26 +1653,16 @@ def power_analysis(epoch1_vals, epoch2_vals, alternative='two-sided'):
         #     size=len(differences), 
         #     replace=True
         # )
-        start_time = time.time()
         resampled_diffs = resampled_diffs_all[sim_num]
-        end_time = time.time()
-        print(f"Time taken for resampling: {end_time - start_time:.2f} seconds")
         
-        start_time = time.time()
         # Run the Wilcoxon test on the new simulated sample
         # We must handle the case where all differences are zero (rare)
         if np.all(resampled_diffs == 0):
             continue
-        end_time = time.time()
-        print(f"Time taken for checking all zeros: {end_time - start_time:.2f} seconds")
             
         # We're testing if the median is different from zero
         # Negate the differences because typically epoch1_vals - epoch2_vals
-        from scipy.stats import wilcoxon as _wilcoxon
-        start_time = time.time()
-        w, p_value = _wilcoxon(-resampled_diffs, alternative=alternative)
-        end_time = time.time()
-        print(f"Time taken for Wilcoxon test: {end_time - start_time:.2f} seconds")
+        w, p_value = wilcoxon(-resampled_diffs, alternative=alternative)
         
         # Count if the simulated experiment was "significant"
         if p_value < 0.05:
