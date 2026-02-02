@@ -1,0 +1,1 @@
+This repo contains code for all analyses published in the paper "Similar destabilization of neural dynamics under different general anesthetics". To install the environment, run `./env_create_uv.sh`. Feel free to reach out with any questions.
